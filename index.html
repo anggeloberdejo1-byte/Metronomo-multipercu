@@ -684,6 +684,11 @@
         <button class="timer-sheet-close" id="playlistSheetClose" type="button" aria-label="Cerrar">✕</button>
       </div>
       <button class="transport playlist-save-btn" id="playlistSaveBtn" type="button" data-i18n="playlist_save">＋ Guardar ritmo actual</button>
+      <div id="playlistNameRow" style="display:none; gap:8px; margin:10px 0;">
+        <input type="text" id="playlistNameInput" maxlength="60" data-i18n-placeholder="playlist_name_ph" placeholder="Nombre para este ritmo…"
+               style="flex:1; min-width:0; padding:10px 12px; border-radius:10px; border:1px solid var(--line, #ccc); background:var(--panel, #fff); color:inherit; font:inherit;">
+        <button class="transport" id="playlistNameOk" type="button" style="margin:0; flex:0 0 auto;" data-i18n="playlist_name_ok">Guardar</button>
+      </div>
       <div id="playlistList"></div>
       <p class="hint" id="playlistEmptyHint" data-i18n="playlist_empty">Todavía no guardaste ningún ritmo.</p>
     </div>
@@ -3224,14 +3229,41 @@
   if (document.getElementById('playlistSheetClose')) document.getElementById('playlistSheetClose').addEventListener('click', closePlaylistSheet);
   if (playlistSheetBackdropEl) playlistSheetBackdropEl.addEventListener('click', closePlaylistSheet);
 
+  // Guardado con campo de nombre inline (window.prompt() está bloqueado en
+  // varias PWA instaladas / webviews — devolvía vacío y nunca se guardaba nada).
+  const playlistNameRowEl = document.getElementById('playlistNameRow');
+  const playlistNameInputEl = document.getElementById('playlistNameInput');
+  const playlistNameOkEl = document.getElementById('playlistNameOk');
+
+  function confirmPlaylistSave() {
+    if (!playlistNameInputEl) return;
+    let name = playlistNameInputEl.value.trim();
+    if (!name) {
+      const snap = currentPresetSnapshot();
+      name = `${modeLabel(snap.mode)} · ${snap.bpm} bpm`;
+    }
+    const snap = currentPresetSnapshot();
+    playlists.push({ id: Date.now(), name, ...snap });
+    savePlaylists();
+    renderPlaylist();
+    playlistNameInputEl.value = '';
+    if (playlistNameRowEl) playlistNameRowEl.style.display = 'none';
+  }
+
   if (playlistSaveBtn) {
     playlistSaveBtn.addEventListener('click', () => {
-      const name = window.prompt('Nombre para este ritmo:', '');
-      if (!name) return;
-      const snap = currentPresetSnapshot();
-      playlists.push({ id: Date.now(), name, ...snap });
-      savePlaylists();
-      renderPlaylist();
+      if (!playlistNameRowEl) return;
+      const open = playlistNameRowEl.style.display !== 'none';
+      playlistNameRowEl.style.display = open ? 'none' : 'flex';
+      if (!open && playlistNameInputEl) {
+        try { playlistNameInputEl.focus(); } catch (e) {}
+      }
+    });
+  }
+  if (playlistNameOkEl) playlistNameOkEl.addEventListener('click', confirmPlaylistSave);
+  if (playlistNameInputEl) {
+    playlistNameInputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmPlaylistSave(); }
     });
   }
 
@@ -3444,7 +3476,7 @@
   // pistas largas) queda en español por ahora. ---
   const I18N = {
     es: {
-      gen_density_label: 'Generador', level_label: 'Nivel', gen_simple: 'Simple', gen_medio: 'Medio', gen_complejo: 'Complejo', gen_btn: '🎲 Generar ritmo', gen_accents_btn: '🎲 Generar acentos',
+      gen_density_label: 'Generador', level_label: 'Nivel', playlist_name_ph: 'Nombre para este ritmo…', playlist_name_ok: 'Guardar', gen_simple: 'Simple', gen_medio: 'Medio', gen_complejo: 'Complejo', gen_btn: '🎲 Generar ritmo', gen_accents_btn: '🎲 Generar acentos',
       pendulo_caption: 'Bloque de conteo activo', pendulo_style_pendulo: 'Péndulo', pendulo_style_bloque: 'Bloque',
       tab_metronomo: 'Metrónomo', tab_cajon: 'Cajón', tab_congas: 'Congas', tab_hibrido: 'Híbrido', tab_afinador: 'Afinador', tab_ajustes: 'Ajustes',
       timer_open: '⏱  Temporizador', playlist_open: '🎵  Playlist', playlist_title: 'Playlist', playlist_save: '＋ Guardar ritmo actual', playlist_empty: 'Todavía no guardaste ningún ritmo.',
@@ -3462,7 +3494,7 @@
       settings_tema: 'Tema', settings_idioma: 'Idioma'
     },
     en: {
-      gen_density_label: 'Generator', level_label: 'Level', gen_simple: 'Simple', gen_medio: 'Medium', gen_complejo: 'Complex', gen_btn: '🎲 Generate rhythm', gen_accents_btn: '🎲 Generate accents',
+      gen_density_label: 'Generator', level_label: 'Level', playlist_name_ph: 'Name this rhythm…', playlist_name_ok: 'Save', gen_simple: 'Simple', gen_medio: 'Medium', gen_complejo: 'Complex', gen_btn: '🎲 Generate rhythm', gen_accents_btn: '🎲 Generate accents',
       pendulo_caption: 'Count block active', pendulo_style_pendulo: 'Pendulum', pendulo_style_bloque: 'Block',
       tab_metronomo: 'Metronome', tab_cajon: 'Cajón', tab_congas: 'Congas', tab_hibrido: 'Hybrid', tab_afinador: 'Tuner', tab_ajustes: 'Settings',
       timer_open: '⏱  Timer', playlist_open: '🎵  Playlist', playlist_title: 'Playlist', playlist_save: '＋ Save current rhythm', playlist_empty: 'You haven’t saved any rhythm yet.',
@@ -3480,7 +3512,7 @@
       settings_tema: 'Theme', settings_idioma: 'Language'
     },
     de: {
-      gen_density_label: 'Generator', level_label: 'Stufe', gen_simple: 'Einfach', gen_medio: 'Mittel', gen_complejo: 'Komplex', gen_btn: '🎲 Rhythmus generieren', gen_accents_btn: '🎲 Akzente generieren',
+      gen_density_label: 'Generator', level_label: 'Stufe', playlist_name_ph: 'Name für diesen Rhythmus…', playlist_name_ok: 'Speichern', gen_simple: 'Einfach', gen_medio: 'Mittel', gen_complejo: 'Komplex', gen_btn: '🎲 Rhythmus generieren', gen_accents_btn: '🎲 Akzente generieren',
       pendulo_caption: 'Zählblock aktiv', pendulo_style_pendulo: 'Pendel', pendulo_style_bloque: 'Block',
       tab_metronomo: 'Metronom', tab_cajon: 'Cajón', tab_congas: 'Congas', tab_hibrido: 'Hybrid', tab_afinador: 'Stimmgerät', tab_ajustes: 'Einstellungen',
       timer_open: '⏱  Timer', playlist_open: '🎵  Playlist', playlist_title: 'Playlist', playlist_save: '＋ Aktuellen Rhythmus speichern', playlist_empty: 'Du hast noch keinen Rhythmus gespeichert.',
@@ -3498,7 +3530,7 @@
       settings_tema: 'Thema', settings_idioma: 'Sprache'
     },
     pt: {
-      gen_density_label: 'Gerador', level_label: 'Nível', gen_simple: 'Simples', gen_medio: 'Médio', gen_complejo: 'Complexo', gen_btn: '🎲 Gerar ritmo', gen_accents_btn: '🎲 Gerar acentos',
+      gen_density_label: 'Gerador', level_label: 'Nível', playlist_name_ph: 'Nome para este ritmo…', playlist_name_ok: 'Salvar', gen_simple: 'Simples', gen_medio: 'Médio', gen_complejo: 'Complexo', gen_btn: '🎲 Gerar ritmo', gen_accents_btn: '🎲 Gerar acentos',
       pendulo_caption: 'Bloco de contagem ativo', pendulo_style_pendulo: 'Pêndulo', pendulo_style_bloque: 'Bloco',
       tab_metronomo: 'Metrônomo', tab_cajon: 'Cajón', tab_congas: 'Congas', tab_hibrido: 'Híbrido', tab_afinador: 'Afinador', tab_ajustes: 'Ajustes',
       timer_open: '⏱  Temporizador', playlist_open: '🎵  Playlist', playlist_title: 'Playlist', playlist_save: '＋ Salvar ritmo atual', playlist_empty: 'Você ainda não salvou nenhum ritmo.',
@@ -3516,7 +3548,7 @@
       settings_tema: 'Tema', settings_idioma: 'Idioma'
     },
     fr: {
-      gen_density_label: 'Générateur', level_label: 'Niveau', gen_simple: 'Simple', gen_medio: 'Moyen', gen_complejo: 'Complexe', gen_btn: '🎲 Générer un rythme', gen_accents_btn: '🎲 Générer des accents',
+      gen_density_label: 'Générateur', level_label: 'Niveau', playlist_name_ph: 'Nom pour ce rythme…', playlist_name_ok: 'Enregistrer', gen_simple: 'Simple', gen_medio: 'Moyen', gen_complejo: 'Complexe', gen_btn: '🎲 Générer un rythme', gen_accents_btn: '🎲 Générer des accents',
       pendulo_caption: 'Bloc de comptage actif', pendulo_style_pendulo: 'Pendule', pendulo_style_bloque: 'Bloc',
       tab_metronomo: 'Métronome', tab_cajon: 'Cajón', tab_congas: 'Congas', tab_hibrido: 'Hybride', tab_afinador: 'Accordeur', tab_ajustes: 'Réglages',
       timer_open: '⏱  Minuteur', playlist_open: '🎵  Playlist', playlist_title: 'Playlist', playlist_save: '＋ Enregistrer le rythme actuel', playlist_empty: 'Vous n’avez encore enregistré aucun rythme.',
@@ -3534,7 +3566,7 @@
       settings_tema: 'Thème', settings_idioma: 'Langue'
     },
     ar: {
-      gen_density_label: 'المولّد', level_label: 'المستوى', gen_simple: 'بسيط', gen_medio: 'متوسط', gen_complejo: 'معقّد', gen_btn: '🎲 توليد إيقاع', gen_accents_btn: '🎲 توليد اللكمات',
+      gen_density_label: 'المولّد', level_label: 'المستوى', playlist_name_ph: 'اسم هذا الإيقاع…', playlist_name_ok: 'حفظ', gen_simple: 'بسيط', gen_medio: 'متوسط', gen_complejo: 'معقّد', gen_btn: '🎲 توليد إيقاع', gen_accents_btn: '🎲 توليد اللكمات',
       pendulo_caption: 'كتلة العد نشطة', pendulo_style_pendulo: 'بندول', pendulo_style_bloque: 'كتلة',
       tab_metronomo: 'مترونوم', tab_cajon: 'كاخون', tab_congas: 'كونجا', tab_hibrido: 'مختلط', tab_afinador: 'ضبط النغمة', tab_ajustes: 'الإعدادات',
       timer_open: '⏱  المؤقت', playlist_open: '🎵  قائمة التشغيل', playlist_title: 'قائمة التشغيل', playlist_save: '＋ حفظ الإيقاع الحالي', playlist_empty: 'لم تحفظ أي إيقاع بعد.',
@@ -3552,7 +3584,7 @@
       settings_tema: 'السمة', settings_idioma: 'اللغة'
     },
     zh: {
-      gen_density_label: '生成器', level_label: '级别', gen_simple: '简单', gen_medio: '中等', gen_complejo: '复杂', gen_btn: '🎲 生成节奏', gen_accents_btn: '🎲 生成重音',
+      gen_density_label: '生成器', level_label: '级别', playlist_name_ph: '为这个节奏命名…', playlist_name_ok: '保存', gen_simple: '简单', gen_medio: '中等', gen_complejo: '复杂', gen_btn: '🎲 生成节奏', gen_accents_btn: '🎲 生成重音',
       pendulo_caption: '计数方块已开启', pendulo_style_pendulo: '摆锤', pendulo_style_bloque: '方块',
       tab_metronomo: '节拍器', tab_cajon: 'Cajón手鼓箱', tab_congas: '康加鼓', tab_hibrido: '混合模式', tab_afinador: '调音器', tab_ajustes: '设置',
       timer_open: '⏱  定时器', playlist_open: '🎵  播放列表', playlist_title: '播放列表', playlist_save: '＋ 保存当前节奏', playlist_empty: '你还没有保存任何节奏。',
@@ -3570,7 +3602,7 @@
       settings_tema: '主题', settings_idioma: '语言'
     },
     ja: {
-      gen_density_label: 'ジェネレーター', level_label: 'レベル', gen_simple: 'シンプル', gen_medio: '普通', gen_complejo: '複雑', gen_btn: '🎲 リズムを生成', gen_accents_btn: '🎲 アクセントを生成',
+      gen_density_label: 'ジェネレーター', level_label: 'レベル', playlist_name_ph: 'リズムの名前…', playlist_name_ok: '保存', gen_simple: 'シンプル', gen_medio: '普通', gen_complejo: '複雑', gen_btn: '🎲 リズムを生成', gen_accents_btn: '🎲 アクセントを生成',
       pendulo_caption: 'カウントブロック作動中', pendulo_style_pendulo: '振り子', pendulo_style_bloque: 'ブロック',
       tab_metronomo: 'メトロノーム', tab_cajon: 'カホン', tab_congas: 'コンガ', tab_hibrido: 'ハイブリッド', tab_afinador: 'チューナー', tab_ajustes: '設定',
       timer_open: '⏱  タイマー', playlist_open: '🎵  プレイリスト', playlist_title: 'プレイリスト', playlist_save: '＋ 現在のリズムを保存', playlist_empty: 'まだリズムを保存していません。',
@@ -3594,6 +3626,10 @@
     document.querySelectorAll('[data-i18n]').forEach((el) => {
       const key = el.dataset.i18n;
       if (dict[key] != null) el.textContent = dict[key];
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+      const key = el.dataset.i18nPlaceholder;
+      if (dict[key] != null) el.setAttribute('placeholder', dict[key]);
     });
     document.querySelectorAll('.lang-btn[data-lang]').forEach((b) => b.classList.toggle('active', b.dataset.lang === settingsState.lang));
     if (!isPlaying) transportBtn.textContent = dict.play_btn;
