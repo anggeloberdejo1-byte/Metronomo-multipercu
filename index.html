@@ -2657,11 +2657,26 @@
   // --- Reproduccion en segundo plano / pantalla bloqueada ---
   // Web Audio API (el scheduler de mas abajo) se pausa cuando iOS manda la
   // pestana a segundo plano o se bloquea la pantalla. Para seguir sonando ahi,
-  // renderizamos el compas actual completo (2 compases = 32 pasos) como un
-  // unico WAV con OfflineAudioContext, y lo reproducimos en bucle con un
-  // <audio> nativo (que iOS si deja seguir sonando en segundo plano), en vez
-  // de depender del scheduler. Al volver a primer plano retomamos el scheduler
-  // normal (con resaltado visual paso a paso).
+  // renderizamos el compas actual (2 compases en modos de grilla, 1 compas en
+  // Metronomo) como un unico WAV con OfflineAudioContext, y lo reproducimos en
+  // bucle con un <audio> nativo (que iOS si deja seguir sonando en segundo
+  // plano), en vez de depender del scheduler. Al volver a primer plano
+  // retomamos el scheduler normal (con resaltado visual paso a paso).
+  //
+  // El WAV NO contiene un solo ciclo: contiene varias repeticiones seguidas
+  // (BG_LOOP_TARGET_SECONDS de duracion total), todas agendadas dentro del
+  // MISMO render offline con offsets exactos, asi que las costuras ENTRE
+  // repeticiones son perfectas (sample-accurate, sin gap). Esto es a
+  // proposito: el atributo loop del <audio> nativo NO es gapless de verdad en
+  // varios navegadores/celulares (suele meter un micro-corte al reiniciar el
+  // clip) — con un solo compas ese corte caia cada 2-6s y sonaba como que "el
+  // tiempo se traba". Repitiendo el patron adentro del WAV, la costura del
+  // <audio loop> solo ocurre cada ~40s en vez de cada compas, así que en la
+  // practica no se nota. No volver a renderizar un solo ciclo para ahorrar
+  // memoria/CPU sin resolver antes el problema de fondo (loop nativo no
+  // gapless).
+  const BG_LOOP_TARGET_SECONDS = 40;
+  const BG_LOOP_MAX_REPS = 200;
   function audioBufferToWavBlob(buffer) {
     const numCh = buffer.numberOfChannels;
     const sr = buffer.sampleRate;
@@ -2715,7 +2730,8 @@
         const secondsPerStep = (60.0 / bpm) / 4;
         loopSeconds = secondsPerStep * exTotalSteps(exercises[selectedKey]);
       }
-      const offlineCtx = new OfflineCtor(2, Math.ceil(sr * loopSeconds), sr);
+      const reps = Math.max(1, Math.min(BG_LOOP_MAX_REPS, Math.ceil(BG_LOOP_TARGET_SECONDS / loopSeconds)));
+      const offlineCtx = new OfflineCtor(2, Math.ceil(sr * loopSeconds * reps), sr);
       let offlinePanner = null;
       if (typeof offlineCtx.createStereoPanner === 'function') {
         offlinePanner = offlineCtx.createStereoPanner();
@@ -2746,36 +2762,39 @@
         src.start(time);
       }
 
-      if (selectedKey === 'metronomo') {
-        for (let i = 0; i < meterPulso; i++) {
-          const state = meterAccents[i];
-          if (state === 0) continue;
-          scheduleOffline('Clave', i * meterBeatDuration, state === 2 ? 0.85 : 1, meterAccentRate(state));
-        }
-        meterSubdivOffsets().forEach((off) => {
-          scheduleOffline('Hi-hat / chasquido', off * meterBeatDuration, 0.32, 1);
-        });
-        if (meterPolyEnabled && polyB > 0) {
-          const stepDur = meterBarDuration / polyB;
-          for (let i = 0; i < polyB; i++) scheduleOffline('Campana timbal', i * stepDur, 0.85);
-        }
-      } else {
-        const ex = exercises[selectedKey];
-        const secondsPerStep = (60.0 / bpm) / 4;
-        const cl = clave[claveOrientation];
-        const exSteps = exTotalSteps(ex);
-        for (let step = 0; step < exSteps; step++) {
-          const t = step * secondsPerStep;
-          if (ex.claveEnabled && isDefaultMeter(ex) && !cl.muted && cl.pattern.includes(step)) {
-            scheduleOffline(claveSound.sound, t, claveSound.gain, null, claveSound.pan);
+      for (let rep = 0; rep < reps; rep++) {
+        const repOffset = rep * loopSeconds;
+        if (selectedKey === 'metronomo') {
+          for (let i = 0; i < meterPulso; i++) {
+            const state = meterAccents[i];
+            if (state === 0) continue;
+            scheduleOffline('Clave', repOffset + i * meterBeatDuration, state === 2 ? 0.85 : 1, meterAccentRate(state));
           }
-          ex.lanes.forEach((lane) => {
-            if (lane.reference || lane.muted) return;
-            if (!effectiveHits(lane.hits, ex).includes(step)) return;
-            const baseStep = toBaseStep(step, ex);
-            const overrideSound = lane.stepSounds && lane.stepSounds[baseStep];
-            scheduleOffline(overrideSound || lane.sound, t, lane.gain, null, lane.pan);
+          meterSubdivOffsets().forEach((off) => {
+            scheduleOffline('Hi-hat / chasquido', repOffset + off * meterBeatDuration, 0.32, 1);
           });
+          if (meterPolyEnabled && polyB > 0) {
+            const stepDur = meterBarDuration / polyB;
+            for (let i = 0; i < polyB; i++) scheduleOffline('Campana timbal', repOffset + i * stepDur, 0.85);
+          }
+        } else {
+          const ex = exercises[selectedKey];
+          const secondsPerStep = (60.0 / bpm) / 4;
+          const cl = clave[claveOrientation];
+          const exSteps = exTotalSteps(ex);
+          for (let step = 0; step < exSteps; step++) {
+            const t = repOffset + step * secondsPerStep;
+            if (ex.claveEnabled && isDefaultMeter(ex) && !cl.muted && cl.pattern.includes(step)) {
+              scheduleOffline(claveSound.sound, t, claveSound.gain, null, claveSound.pan);
+            }
+            ex.lanes.forEach((lane) => {
+              if (lane.reference || lane.muted) return;
+              if (!effectiveHits(lane.hits, ex).includes(step)) return;
+              const baseStep = toBaseStep(step, ex);
+              const overrideSound = lane.stepSounds && lane.stepSounds[baseStep];
+              scheduleOffline(overrideSound || lane.sound, t, lane.gain, null, lane.pan);
+            });
+          }
         }
       }
 

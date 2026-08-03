@@ -1,7 +1,7 @@
 // Service worker: cachea la app la primera vez que se abre online,
 // para que despues funcione offline aunque el sitio en Netlify se borre
 // o no haya conexion.
-const CACHE_NAME = 'independencia-v29';
+const CACHE_NAME = 'independencia-v30';
 const APP_SHELL = './';
 
 self.addEventListener('install', (event) => {
