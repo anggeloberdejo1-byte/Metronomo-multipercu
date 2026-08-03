@@ -1314,8 +1314,6 @@
   let audioCtx = null;
   let samplesReady = false;
   let masterPanner = null;
-  let bgLoopPannerNode = null;
-  let bgLoopRouted = false;
   let isPlaying = false;
   let bpm = 76;
   let currentStepIndex = 0;
@@ -2246,9 +2244,8 @@
   function setChannel(ch) {
     settingsState.channel = ch;
     if (masterPanner) masterPanner.pan.value = channelToPan(ch);
-    if (bgLoopPannerNode) bgLoopPannerNode.pan.value = channelToPan(ch);
     renderChannelBtns();
-    saveState();
+    saveState(); // saveState() marca bgLoopDirty y re-renderiza el bucle de fondo con el canal nuevo
   }
 
   [exChannelBtnsEl, meterChannelBtnsEl].forEach((wrap) => {
@@ -2588,24 +2585,15 @@
       masterPanner.connect(audioCtx.destination);
     }
 
-    // Enrutamos tambien el <audio> de fondo (bucle en 2do plano) a traves de un
-    // panner, para que el canal de salida tambien aplique con pantalla bloqueada.
-    if (!bgLoopRouted) {
-      try {
-        if (typeof audioCtx.createMediaElementSource === 'function') {
-          const bgSrc = audioCtx.createMediaElementSource(bgLoopEl);
-          if (typeof audioCtx.createStereoPanner === 'function') {
-            bgLoopPannerNode = audioCtx.createStereoPanner();
-            bgLoopPannerNode.pan.value = channelToPan(settingsState.channel);
-            bgSrc.connect(bgLoopPannerNode);
-            bgLoopPannerNode.connect(audioCtx.destination);
-          } else {
-            bgSrc.connect(audioCtx.destination);
-          }
-        }
-      } catch (e) {}
-      bgLoopRouted = true;
-    }
+    // IMPORTANTE: bgLoopEl (el <audio> nativo del bucle de fondo) NO se
+    // enruta a traves de audioCtx/createMediaElementSource a proposito. El
+    // canal (izq/centro/der) ya queda grabado directo en el WAV al
+    // renderizarlo (ver offlinePanner en renderBackgroundLoop) precisamente
+    // para que bgLoopEl pueda quedar totalmente desconectado del
+    // AudioContext: asi sigue sonando con la pantalla bloqueada, porque no
+    // depende de un grafo de Web Audio que iOS/Android suspenden en segundo
+    // plano. Enrutarlo por el AudioContext (como se hacia antes) silenciaba
+    // el bucle de fondo apenas se bloqueaba la pantalla — no reintroducirlo.
   }
 
   function base64ToArrayBuffer(dataUri) {
@@ -3129,6 +3117,7 @@
     }
 
     setupMediaSession();
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {} }
     bgLoopDirty = true;
     renderBackgroundLoop();
   }
@@ -3145,6 +3134,7 @@
     clearHighlight();
     meterClearHighlight();
     bgLoopEl.pause();
+    if ('mediaSession' in navigator) { try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {} }
     updateBarCounter(barCount);
     if (penduloArmEl) { penduloArmEl.style.transition = 'none'; penduloArmEl.style.left = '0%'; }
     if (penduloBlocksEl) [...penduloBlocksEl.children].forEach(el => el.classList.remove('on'));
