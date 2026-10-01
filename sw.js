@@ -1,42 +1,55 @@
-// Service worker: cachea la app la primera vez que se abre online,
-// para que despues funcione offline aunque el sitio en Netlify se borre
-// o no haya conexion.
-const CACHE_NAME = 'independencia-v30';
-const APP_SHELL = './';
+/* Service Worker — Reloj de Acordes
+ *
+ * Hace que la app funcione sin conexión una vez abierta con internet.
+ * Como todo el HTML/CSS/JS/imágenes está incrustado en index.html, solo
+ * necesitamos cachear ese archivo (y el manifest/íconos) para offline total.
+ *
+ * IMPORTANTE: cada vez que actualices index.html, subí también el número de
+ * versión de CACHE (v1 -> v2 ...) para que los usuarios reciban la versión
+ * nueva en vez de la vieja cacheada.
+ */
+const CACHE = "reloj-acordes-v3";
+const ARCHIVOS = [
+  "./",
+  "./index.html",
+  "./manifest.json"
+];
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll([
-      './',
-      './index.html',
-      './manifest.json',
-      './icon-192.png',
-      './icon-512.png',
-      './icon-maskable-512.png'
-    ]).catch(() => {}))
+// Instalación: guardar los archivos base en el caché.
+self.addEventListener("install", (evento) => {
+  evento.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(ARCHIVOS))
+      .then(() => self.skipWaiting())
   );
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
+// Activación: borrar cachés viejos de versiones anteriores.
+self.addEventListener("activate", (evento) => {
+  evento.waitUntil(
+    caches.keys().then((claves) =>
+      Promise.all(claves.filter((k) => k !== CACHE).map((k) => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
 
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => cached);
-    })
+// Fetch: estrategia "network-first" para el HTML (así ves la versión más
+// nueva si hay internet), con fallback al caché cuando estás offline.
+self.addEventListener("fetch", (evento) => {
+  const req = evento.request;
+  if (req.method !== "GET") return;
+
+  evento.respondWith(
+    fetch(req)
+      .then((respuesta) => {
+        // Guardar una copia fresca en el caché.
+        const copia = respuesta.clone();
+        caches.open(CACHE).then((cache) => cache.put(req, copia));
+        return respuesta;
+      })
+      .catch(() => {
+        // Sin internet: servir desde el caché. Si el recurso exacto no está,
+        // caer al index.html (para que la app siempre abra).
+        return caches.match(req).then((c) => c || caches.match("./index.html"));
+      })
   );
 });
