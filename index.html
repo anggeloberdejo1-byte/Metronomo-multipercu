@@ -3439,7 +3439,7 @@
       if (Array.isArray(p.lanes)) {
         const pattern = ensurePatternForMeter(ex, Math.max(1, Math.min(16, pulso)), nota);
         pattern.lanes.forEach((lane, i) => {
-          const saved = p.lanes[i];
+          const saved = p.lanes[i] ? JSON.parse(JSON.stringify(p.lanes[i])) : null;
           if (!saved || lane.reference) return;
           if (Array.isArray(saved.hits)) lane.hits = saved.hits.filter((n) => typeof n === 'number');
           if (typeof saved.muted === 'boolean') lane.muted = saved.muted;
