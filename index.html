@@ -639,6 +639,19 @@
   .paypal-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .timer-badge.timer-flash { animation: timerFlash 0.35s ease-in-out 4; }
   @keyframes timerFlash { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); background: var(--brass); color: var(--ink); } }
+
+  .playlist-item-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+  .playlist-item-share { background: none; border: none; color: var(--brass); cursor: pointer; padding: 6px; display: flex; border-radius: 6px; }
+  .playlist-item-share:hover { background: var(--surface); }
+  .playlist-item-share:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .share-toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px);
+    max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 10px;
+    background: var(--parchment); color: var(--ink); font-size: 13.5px; font-weight: 600;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.25); opacity: 0; pointer-events: none;
+    transition: opacity 0.25s, transform 0.25s; z-index: 9999; text-align: center;
+  }
+  .share-toast.show { opacity: 1; transform: translate(-50%, 0); }
 </style>
 </head>
 <body>
@@ -724,6 +737,7 @@
         <button class="transport" id="playlistNameOk" type="button" style="margin:0; flex:0 0 auto;" data-i18n="playlist_name_ok">Guardar</button>
       </div>
       <div id="playlistList"></div>
+      <p class="hint" style="text-align:left; margin-top:4px;">Toca el ícono de compartir de un ritmo para mandar el link. Quien lo abra lo recibe en su playlist.</p>
       <p class="hint" id="playlistEmptyHint" data-i18n="playlist_empty">Todavía no guardaste ningún ritmo.</p>
     </div>
 
@@ -3357,12 +3371,28 @@
 
   function currentPresetSnapshot() {
     if (selectedKey === 'metronomo') {
-      return { mode: 'metronomo', bpm, compas: `${meterPulso}/${meterNota}` };
+      return {
+        mode: 'metronomo', bpm, compas: `${meterPulso}/${meterNota}`,
+        accents: meterAccents.slice(0, meterPulso),
+        poly: meterPolyEnabled, polyB, eqNote: meterEqNote, mres: meterGridResolution
+      };
     }
     const ex = exercises[selectedKey];
     if (!ex) return { mode: selectedKey, bpm, compas: '4/4' };
-    return { mode: selectedKey, bpm, compas: `${ex.compasPulso}/${ex.compasNota}` };
+    return {
+      mode: selectedKey, bpm, compas: `${ex.compasPulso}/${ex.compasNota}`,
+      clave: claveOrientation, res: gridResolution,
+      lanes: ex.lanes.map((lane) => (lane.reference ? null : {
+        hits: Array.isArray(lane.hits) ? lane.hits.slice() : [],
+        muted: !!lane.muted, sound: lane.sound,
+        gain: typeof lane.gain === 'number' ? lane.gain : 1,
+        pan: lane.pan != null ? lane.pan : null,
+        stepSounds: lane.stepSounds ? JSON.parse(JSON.stringify(lane.stepSounds)) : {}
+      }))
+    };
   }
+
+  const shareIconSvg = '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/></svg>';
 
   function renderPlaylist() {
     if (!playlistListEl) return;
@@ -3378,7 +3408,10 @@
           <span class="playlist-item-name">${escapeHtml(p.name)}</span>
           <span class="playlist-item-meta">${p.bpm} bpm · ${escapeHtml(p.compas)} · ${modeLabel(p.mode)}</span>
         </div>
-        <button class="playlist-item-del" type="button" data-del="${p.id}" aria-label="Borrar">✕</button>
+        <div class="playlist-item-actions">
+          <button class="playlist-item-share" type="button" data-share="${p.id}" aria-label="Compartir">${shareIconSvg}</button>
+          <button class="playlist-item-del" type="button" data-del="${p.id}" aria-label="Borrar">✕</button>
+        </div>
       </div>
     `).join('');
   }
@@ -3390,8 +3423,33 @@
     if (p.mode === 'metronomo') {
       meterPulso = Math.max(1, Math.min(16, pulso));
       meterNota = nota;
+      if (Array.isArray(p.accents)) {
+        meterAccents = p.accents.map((v) => Math.max(0, Math.min(3, parseInt(v, 10) || 0)));
+      }
+      if (typeof p.poly === 'boolean') meterPolyEnabled = p.poly;
+      if (typeof p.polyB === 'number') polyB = p.polyB;
+      if (typeof p.eqNote === 'number') meterEqNote = p.eqNote;
+      if (typeof p.mres === 'number') meterGridResolution = p.mres;
+      const polyToggleEl = document.getElementById('polyToggle');
+      if (polyToggleEl) polyToggleEl.checked = meterPolyEnabled;
     } else if (exercises[p.mode]) {
-      switchExerciseMeter(exercises[p.mode], pulso, nota);
+      const ex = exercises[p.mode];
+      if (p.clave === '3-2' || p.clave === '2-3') claveOrientation = p.clave;
+      if ([4, 8, 16].includes(p.res)) gridResolution = p.res;
+      if (Array.isArray(p.lanes)) {
+        const pattern = ensurePatternForMeter(ex, Math.max(1, Math.min(16, pulso)), nota);
+        pattern.lanes.forEach((lane, i) => {
+          const saved = p.lanes[i];
+          if (!saved || lane.reference) return;
+          if (Array.isArray(saved.hits)) lane.hits = saved.hits.filter((n) => typeof n === 'number');
+          if (typeof saved.muted === 'boolean') lane.muted = saved.muted;
+          if (saved.sound && findPreset(saved.sound)) lane.sound = saved.sound;
+          if (typeof saved.gain === 'number') lane.gain = saved.gain;
+          if (saved.pan !== undefined) lane.pan = saved.pan;
+          if (saved.stepSounds && typeof saved.stepSounds === 'object') lane.stepSounds = saved.stepSounds;
+        });
+      }
+      switchExerciseMeter(ex, pulso, nota);
     }
     if (typeof p.bpm === 'number') setBpm(p.bpm);
     setActiveTab(p.mode);
@@ -3448,8 +3506,122 @@
     });
   }
 
+  // --- Compartir ritmos: el ritmo viaja dentro del link (#ritmo=...), así
+  // que no hace falta servidor. Quien lo abre lo recibe en su playlist. ---
+  const SHARE_PARAM = 'ritmo';
+
+  function encodeRhythm(obj) {
+    const bytes = new TextEncoder().encode(JSON.stringify(obj));
+    let bin = '';
+    bytes.forEach((b) => { bin += String.fromCharCode(b); });
+    return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  function decodeRhythm(str) {
+    let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  function shareLinkFor(p) {
+    const { id, ...data } = p;
+    const base = location.href.split('#')[0].split('?')[0];
+    return `${base}#${SHARE_PARAM}=${encodeRhythm({ v: 1, ...data })}`;
+  }
+
+  let shareToastTimer = null;
+  function showShareToast(msg) {
+    let el = document.getElementById('shareToast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'shareToast';
+      el.className = 'share-toast';
+      el.setAttribute('role', 'status');
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(shareToastTimer);
+    shareToastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+  }
+
+  function shareText(key) {
+    const lang = settingsState.lang;
+    const T = {
+      es: { msg: 'Escucha este ritmo que armé en Independencia:', copied: 'Link copiado. Pégalo donde quieras compartirlo.', got: 'Ritmo recibido y guardado en tu playlist:', bad: 'No se pudo abrir el ritmo compartido.' },
+      en: { msg: 'Check out this rhythm I made in Independencia:', copied: 'Link copied. Paste it wherever you want to share it.', got: 'Rhythm received and saved to your playlist:', bad: 'Could not open the shared rhythm.' },
+      pt: { msg: 'Escute este ritmo que fiz no Independencia:', copied: 'Link copiado. Cole onde quiser compartilhar.', got: 'Ritmo recebido e salvo na sua playlist:', bad: 'Não foi possível abrir o ritmo compartilhado.' },
+      fr: { msg: 'Écoute ce rythme que j’ai créé dans Independencia :', copied: 'Lien copié. Colle-le où tu veux le partager.', got: 'Rythme reçu et enregistré dans ta playlist :', bad: 'Impossible d’ouvrir le rythme partagé.' },
+      de: { msg: 'Hör dir diesen Rhythmus an, den ich in Independencia gebaut habe:', copied: 'Link kopiert. Füge ihn ein, wo du ihn teilen willst.', got: 'Rhythmus empfangen und in deiner Playlist gespeichert:', bad: 'Der geteilte Rhythmus konnte nicht geöffnet werden.' }
+    };
+    return (T[lang] || T.es)[key];
+  }
+
+  async function sharePreset(p) {
+    const url = shareLinkFor(p);
+    const title = `${p.name} · ${p.bpm} bpm · ${p.compas}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title, text: `${shareText('msg')} ${title}`, url });
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return;
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      showShareToast(shareText('copied'));
+    } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = url;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); showShareToast(shareText('copied')); } catch (e2) {}
+      ta.remove();
+    }
+  }
+
+  function importSharedRhythmFromUrl() {
+    const m = location.hash.match(new RegExp('[#&]' + SHARE_PARAM + '=([^&]+)'));
+    if (!m) return;
+    try { history.replaceState(null, '', location.href.split('#')[0]); } catch (e) {}
+    let data;
+    try { data = decodeRhythm(m[1]); } catch (e) { showShareToast(shareText('bad')); return; }
+    if (!data || typeof data !== 'object' || !(data.mode === 'metronomo' || exercises[data.mode])) {
+      showShareToast(shareText('bad'));
+      return;
+    }
+    const preset = {
+      id: Date.now(),
+      name: String(data.name || `${modeLabel(data.mode)} · ${data.bpm} bpm`).slice(0, 60),
+      mode: data.mode,
+      bpm: Math.max(30, Math.min(300, parseInt(data.bpm, 10) || 90)),
+      compas: /^\d{1,2}\/\d{1,2}$/.test(String(data.compas)) ? String(data.compas) : '4/4'
+    };
+    ['accents', 'poly', 'polyB', 'eqNote', 'mres', 'clave', 'res', 'lanes'].forEach((k) => {
+      if (data[k] !== undefined) preset[k] = data[k];
+    });
+    playlists.push(preset);
+    savePlaylists();
+    loadPreset(preset);
+    showShareToast(`${shareText('got')} ${preset.name}`);
+  }
+
   if (playlistListEl) {
     playlistListEl.addEventListener('click', (e) => {
+      const shareBtn = e.target.closest('[data-share]');
+      if (shareBtn) {
+        e.stopPropagation();
+        const id = parseInt(shareBtn.dataset.share, 10);
+        const p = playlists.find((pl) => pl.id === id);
+        if (p) sharePreset(p);
+        return;
+      }
       const delBtn = e.target.closest('[data-del]');
       if (delBtn) {
         e.stopPropagation();
@@ -3902,6 +4074,8 @@
   bpmDisplay.textContent = bpm;
   setActiveTab(selectedKey);
   applyI18n();
+  importSharedRhythmFromUrl();
+  window.addEventListener('hashchange', importSharedRhythmFromUrl);
 })();
 </script>
 </body>
