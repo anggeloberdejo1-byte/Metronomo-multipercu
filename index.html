@@ -623,6 +623,22 @@
     .mark, .step, .transport { transition: none !important; }
     .step.active .mark.hit { transform: none; box-shadow: 0 0 0 2px currentColor; }
   }
+
+  /* --- Bloque de transporte (tempo/temporizador/reproducir) debajo del recuadro de compás --- */
+  #transportBlock { margin-top: 14px; }
+  #transportBlock .transport { margin-bottom: 4px; }
+  .paypal-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin: 12px auto 18px; padding: 10px 16px; max-width: 320px;
+    border-radius: 999px; border: 1px solid var(--brass);
+    color: var(--brass); background: transparent; text-decoration: none;
+    font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .paypal-btn:hover { background: var(--surface-2); }
+  .paypal-btn:active { background: var(--brass); color: var(--ink); }
+  .paypal-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .timer-badge.timer-flash { animation: timerFlash 0.35s ease-in-out 4; }
+  @keyframes timerFlash { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); background: var(--brass); color: var(--ink); } }
 </style>
 </head>
 <body>
@@ -652,6 +668,8 @@
     </div>
 
 
+    <div id="transportAnchor"></div>
+    <div id="transportBlock">
     <div class="panel">
       <div class="tempo-row">
         <span class="tempo-label">Tempo</span>
@@ -675,6 +693,22 @@
         <span id="timerBadgeText">5:00</span>
         <button class="timer-cancel-btn" id="timerCancelBtn" type="button" aria-label="Cancelar temporizador">✕</button>
       </div>
+    </div>
+
+    <div class="pendulo-wrap" id="penduloWrap" style="display:none;">
+      <p class="pendulo-caption"><span class="pendulo-caption-dot"></span><span data-i18n="pendulo_caption">Bloque de conteo activo</span></p>
+      <div class="pendulo-blocks" id="penduloBlocks"></div>
+      <div class="pendulo-track">
+        <div class="pendulo-arm" id="penduloArm"></div>
+      </div>
+    </div>
+    <p class="bar-counter" id="barCounter"></p>
+
+    <button class="transport" id="transportBtn" aria-pressed="false" data-i18n="play_btn">▶ &nbsp;Reproducir</button>
+      <a class="paypal-btn" id="paypalBtn" href="https://www.paypal.com/paypalme/anggeloberdejo" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M7.1 21.5H3.6a.5.5 0 0 1-.5-.6L5.9 3.2a.9.9 0 0 1 .9-.7h6.1c3.6 0 5.6 1.8 5.1 5-.6 3.6-3 5.4-6.6 5.4H9.6l-.9 5.6-.3 2.1a.9.9 0 0 1-.9.9zm11.6-14c-.1.5-.2 1-.3 1.4-1 4.6-4.3 6.3-8.3 6.3h-.4l-1.1 6.5h2.9a.8.8 0 0 0 .8-.7l.6-3.8h1.7c3.6 0 6.2-1.6 6.9-5.4.3-1.8 0-3.2-.8-4.3z"/></svg>
+        <span data-i18n="paypal_btn">Apoya este proyecto en PayPal</span>
+      </a>
     </div>
 
     <div class="sheet-backdrop" id="playlistSheetBackdrop"></div>
@@ -732,16 +766,6 @@
       </div>
     </div>
 
-    <div class="pendulo-wrap" id="penduloWrap" style="display:none;">
-      <p class="pendulo-caption"><span class="pendulo-caption-dot"></span><span data-i18n="pendulo_caption">Bloque de conteo activo</span></p>
-      <div class="pendulo-blocks" id="penduloBlocks"></div>
-      <div class="pendulo-track">
-        <div class="pendulo-arm" id="penduloArm"></div>
-      </div>
-    </div>
-    <p class="bar-counter" id="barCounter"></p>
-
-    <button class="transport" id="transportBtn" aria-pressed="false" data-i18n="play_btn">▶ &nbsp;Reproducir</button>
     <audio id="iosUnlock" src="data:audio/wav;base64,UklGRsAIAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YZwIAAAAAFEAogDwADsBgAG/AfgBKAJQAm4CgwKNAo4ChAJwAlICKwL7AcMBhAE/AfUApwBWAAQAs/9i/xT/yv6E/kT+C/7b/bL9k/1+/XP9cv17/Y/9rP3T/QL+Ov55/r3+B/9V/6X/9/9IAJkA6AAyAXgBuAHyASMCTAJrAoECjQKOAoUCcgJWAi8CAALJAYsBRwH9ALAAXwAOALz/a/8d/9L+i/5L/hH+4P22/Zb9gP10/XL9ev2M/aj9zv39/TP+cf61/v/+TP+c/+7/PwCQAN8AKgFxAbEB6wEeAkgCaAJ/AowCjwKHAnUCWQI0AgYC0AGTAU8BBgG5AGkAFwDG/3X/Jv/a/pP+Uv4Y/uX9u/2Z/YL9df1x/Xj9iv2l/cn99/0t/mr+rf72/kP/k//k/zYAhwDWACIBaQGqAeUBGAJDAmUCfQKLAo8CiAJ4Al0COQIMAtcBmgFXAQ4BwgByACAAz/9+/y7/4v6b/ln+Hv7q/b/9nf2E/Xb9cf13/Yf9of3F/fH9Jv5i/qX+7f46/4r/2/8sAH4AzQAZAWEBowHfARMCPwJiAnsCigKPAooCegJhAj0CEQLdAaEBXwEXAcoAewApANj/h/83/+v+o/5g/iT+8P3D/aD9hv13/XH9dv2F/Z79wP3s/SD+W/6d/uX+Mf+A/9L/IwB1AMQAEQFZAZwB2QEOAjoCXgJ4AokCjwKLAnwCZAJCAhcC4wGoAWcBHwHTAIQAMwDi/5D/QP/z/qv+aP4r/vX9yP2k/Yn9eP1x/XX9g/2a/bz95v0Z/lT+lv7d/ij/d//J/xoAawC7AAgBUQGVAdIBCAI2AloCdgKHAo8CjAJ+AmcCRgIcAuoBrwFuASgB3ACNADwA6/+Z/0n//P6z/m/+Mf77/c39p/2L/Xn9cv10/YH9l/24/eH9E/5N/o7+1P4f/27/v/8QAGIAsgAAAUkBjQHLAQICMQJXAnMChgKOAowCgAJqAkoCIQLwAbYBdgEwAeUAlgBFAPT/o/9S/wX/u/52/jj+Af7S/av9jv17/XL9c/1//ZT9s/3c/Q3+Rv6G/sz+F/9l/7b/BwBZAKkA9wBBAYYBxQH8ASwCUwJwAoQCjgKNAoICbQJPAicC9gG9AX4BOAHuAJ8ATwD+/6z/W/8N/8P+fv4//gf+1v2v/ZH9ff1y/XL9ff2R/a/91/0H/j/+f/7E/g7/XP+t////UACgAO4AOQF+Ab4B9gEnAk8CbgKCAo0CjgKEAnACUwIsAvwBxAGFAUAB9gCoAFgABgC1/2T/Fv/L/oX+Rv4N/tz9s/2U/X79c/1y/Xv9jv2s/dL9Af45/nf+vP4F/1P/o//1/0YAlwDmADEBdwG3AfABIgJLAmsCgQKNAo4ChgJzAlYCMAICAssBjQFIAf8AsQBhAA8Avv9t/x//0/6N/kz+E/7h/bf9l/2A/XT9cv16/Yz9qP3N/fz9Mv5w/rT+/f5K/5r/7P89AI4A3QAoAW8BsAHqAR0CRwJnAn8CjAKPAocCdgJaAjUCBwLRAZQBUAEHAboAagAZAMj/dv8n/9z+lf5T/hn+5v27/Zr9gv11/XH9eP2J/aT9yP32/Sv+aP6s/vT+Qf+R/+P/NACFANQAIAFnAakB5AEXAkICZAJ8AosCjwKJAngCXgI6Ag0C2AGbAVgBEAHDAHQAIgDR/4D/MP/k/p3+W/4f/uv9wP2d/YX9dv1x/Xf9h/2h/cT98P0l/mH+pP7s/jj/iP/Z/yoAfADLABgBYAGiAd4BEgI+AmECegKKAo8CigJ6AmECPgITAt4BowFgARgBzAB9ACsA2v+J/zn/7f6k/mL+Jv7x/cT9of2H/Xf9cf12/YT9nf2//ev9H/5a/pz+4/4v/3//0P8hAHMAwgAPAVgBmwHXAQwCOQJdAngCiAKPAosCfQJlAkMCGALlAaoBaAEhAdUAhgA1AOT/kv9C//X+rP5p/iz+9v3J/aT9if14/XH9df2C/Zr9u/3l/Rj+U/6U/tv+J/92/8f/GABpALoABwFQAZMB0QEHAjUCWgJ1AocCjwKMAn8CaAJHAh0C6wGxAXABKQHeAI8APgDt/5v/S//+/rT+cP4z/vz9zv2o/Yz9ev1y/XT9gP2X/bf94P0S/kz+jP7T/h7/bP+9/w4AYACxAP4ASAGMAcoBAQIwAlYCcwKGAo4CjQKBAmsCSwIiAvEBuAF4ATIB5wCYAEcA9v+k/1T/Bv+8/nj+Of4C/tP9rP2P/Xv9cv1z/X79lP2z/dv9DP5F/oX+yv4V/2P/tP8FAFcAqAD1AD8BhAHDAfsBKwJSAnAChAKOAo0CgwJuAk8CKAL3Ab8BfwE6Ae8AoQBRAAAArv9d/w//xf5//kD+CP7X/bD9kv19/XP9cv18/ZH9r/3W/Qb+Pv59/sL+DP9a/6v//f9OAJ4A7QA3AX0BvQH1ASYCTgJtAoICjQKOAoQCcQJTAiwC/QHFAYcBQgH4AKoAWgAIALf/Zv8Y/83+h/5H/g7+3f20/ZT9f/1z/XL9e/2O/av90f0A/jf+dv66/gT/Uf+i//P/RACVAOQALwF1AbYB7wEhAkoCagKAAowCjgKGAnMCVwIxAgMCzAGOAUoBAQGzAGMAEQDA/2//IP/V/o/+Tv4U/uL9uP2Y/YH9dP1x/Xn9i/2n/cz9+v0x/m7+sv77/kj/mP/q/zsAjADbACcBbgGvAekBHAJGAmcCfgKMAo8ChwJ2AlsCNgIIAtMBlgFSAQkBvABsABsAyf94/yn/3f6W/lX+Gv7n/bz9m/2D/XX9cf14/Yn9o/3I/fX9Kv5n/qr+8/4//4//4f8yAIMA0gAeAWYBqAHjARYCQQJkAnwCiwKPAokCeQJeAjsCDgLZAZ0BWgESAcUAdQAkANP/gf8y/+b+nv5c/iD+7P3B/Z79hf12/XH9d/2G/aD9w/3v/ST+YP6i/ur+Nv+G/w==" playsinline preload="auto" style="display:none"></audio>
 
         <audio id="bgLoop" loop playsinline preload="auto" style="display:none"></audio>
@@ -1397,6 +1421,7 @@
   let bgLoopUrl = null;
   let bgLoopDirty = true;
   let bgLoopRendering = false;
+  let wakeLock = null;
 
   const gridViewWrapEl = document.getElementById('gridViewWrap');
   const meterPanelEl = document.getElementById('meterPanel');
@@ -1795,6 +1820,21 @@
     }
   }
 
+  // Coloca tempo + temporizador/playlist + reproducir justo debajo del
+  // recuadro de Pulso / Compás / Generar de la pestaña activa.
+  function placeTransportBlock(key) {
+    const block = document.getElementById('transportBlock');
+    if (!block) return;
+    let target = null;
+    if (key === 'metronomo') target = meterPanelEl.querySelector(':scope > .panel');
+    else if (key !== 'ajustes') target = document.getElementById('exCompasPanel');
+    if (target) target.insertAdjacentElement('afterend', block);
+    else {
+      const anchor = document.getElementById('transportAnchor');
+      if (anchor) anchor.insertAdjacentElement('afterend', block);
+    }
+  }
+
   function setActiveTab(key) {
     if (key === 'ajustes' && isPlaying) stop();
     if (selectedKey === 'ajustes' && key !== 'ajustes' && typeof stopTuner === 'function') stopTuner();
@@ -1808,6 +1848,8 @@
     soundPanelEl.classList.remove('visible');
     transportBtn.style.display = 'block';
     penduloWrapEl.style.display = 'none';
+
+    placeTransportBlock(key);
 
     if (key === 'metronomo') {
       meterPanelEl.style.display = 'block';
@@ -2064,9 +2106,106 @@
     timerBadge.style.display = 'none';
   }
 
+  // --- Aviso sonoro al terminar el temporizador (también en modo repetido) ---
+  // Se sintetiza una campanita (distinta al click del metrónomo) como WAV y se
+  // reproduce con un <audio> nativo, que sigue sonando aunque el AudioContext
+  // esté ocupado o la pantalla se haya bloqueado.
+  //   'cycle' = dos notas ascendentes  -> terminó el ciclo, arranca el siguiente
+  //   'end'   = arpegio de tres notas  -> terminó el temporizador
+  function synthChimeWav(kind) {
+    const sr = 44100;
+    const notes = kind === 'cycle'
+      ? [{ f: 1318.5, t: 0.00, d: 0.45 }, { f: 1760.0, t: 0.18, d: 0.70 }]
+      : [{ f: 1046.5, t: 0.00, d: 0.50 }, { f: 1318.5, t: 0.16, d: 0.50 }, { f: 1568.0, t: 0.32, d: 0.50 }, { f: 2093.0, t: 0.48, d: 1.00 }];
+    const total = Math.max(...notes.map(n => n.t + n.d)) + 0.05;
+    const len = Math.floor(total * sr);
+    const buf = new Float32Array(len);
+    notes.forEach(({ f, t, d }) => {
+      const start = Math.floor(t * sr), n = Math.floor(d * sr);
+      for (let i = 0; i < n && start + i < len; i++) {
+        const x = i / sr;
+        const env = Math.min(1, x / 0.004) * Math.exp(-x * 5.5);
+        buf[start + i] += env * (Math.sin(2 * Math.PI * f * x) * 0.7
+          + Math.sin(2 * Math.PI * f * 2.76 * x) * 0.18 * Math.exp(-x * 9)
+          + Math.sin(2 * Math.PI * f * 5.4 * x) * 0.08 * Math.exp(-x * 14));
+      }
+    });
+    let peak = 0;
+    for (let i = 0; i < len; i++) peak = Math.max(peak, Math.abs(buf[i]));
+    const gain = peak > 0 ? 0.92 / peak : 1;
+    const ab = new ArrayBuffer(44 + len * 2);
+    const v = new DataView(ab);
+    const w = (o, str) => { for (let i = 0; i < str.length; i++) v.setUint8(o + i, str.charCodeAt(i)); };
+    w(0, 'RIFF'); v.setUint32(4, 36 + len * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    w(36, 'data'); v.setUint32(40, len * 2, true);
+    for (let i = 0; i < len; i++) v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, buf[i] * gain)) * 32767, true);
+    return URL.createObjectURL(new Blob([ab], { type: 'audio/wav' }));
+  }
+
+  const timerChimeEls = {};
+  function getTimerChimeEl(kind) {
+    if (!timerChimeEls[kind]) {
+      const el = new Audio();
+      el.preload = 'auto';
+      el.setAttribute('playsinline', '');
+      try { el.src = synthChimeWav(kind); } catch (e) {}
+      timerChimeEls[kind] = el;
+    }
+    return timerChimeEls[kind];
+  }
+
+  // Se llama dentro del toque en "Iniciar" para que iOS permita reproducir
+  // la campanita más tarde sin gesto del usuario.
+  function unlockTimerChimes() {
+    ['cycle', 'end'].forEach((k) => {
+      const el = getTimerChimeEl(k);
+      el.muted = true;
+      const pr = el.play();
+      const done = () => { el.pause(); el.currentTime = 0; el.muted = false; };
+      if (pr && pr.then) pr.then(done).catch(() => { el.muted = false; });
+      else done();
+    });
+  }
+
+  function playTimerChimeWebAudio(kind) {
+    if (!audioCtx) return;
+    const freqs = kind === 'cycle' ? [1318.5, 1760] : [1046.5, 1318.5, 1568, 2093];
+    const t0 = audioCtx.currentTime + 0.02;
+    freqs.forEach((f, i) => {
+      const t = t0 + i * (kind === 'cycle' ? 0.18 : 0.16);
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.6, t + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t); o.stop(t + 0.65);
+    });
+  }
+
+  function playTimerChime(kind) {
+    const el = getTimerChimeEl(kind);
+    try {
+      el.muted = false;
+      el.currentTime = 0;
+      const pr = el.play();
+      if (pr && pr.catch) pr.catch(() => playTimerChimeWebAudio(kind));
+    } catch (e) { playTimerChimeWebAudio(kind); }
+    if (navigator.vibrate) { try { navigator.vibrate(kind === 'cycle' ? [120, 80, 120] : [200, 100, 200, 100, 400]); } catch (e) {} }
+    if (timerBadge) {
+      timerBadge.classList.remove('timer-flash');
+      void timerBadge.offsetWidth;
+      timerBadge.classList.add('timer-flash');
+    }
+  }
+
   function checkTimerExpiry() {
     if (timerEndAt == null) return;
     if (Date.now() >= timerEndAt) {
+      playTimerChime(timerRepeatFlag ? 'cycle' : 'end');
       if (timerAutoStopFlag) stop();
       if (timerRepeatFlag) {
         timerEndAt = Date.now() + timerDurationMs;
@@ -2083,6 +2222,7 @@
     timerEndAt = Date.now() + timerDurationMs;
     timerRepeatFlag = timerOptRepeat.checked;
     timerAutoStopFlag = timerOptAutoStop.checked;
+    unlockTimerChimes();
     closeTimerSheet();
     updateTimerBadge();
     if (timerIntervalId) clearInterval(timerIntervalId);
@@ -2843,6 +2983,35 @@
     } catch (e) {}
   }
 
+  // --- Wake Lock: evita que la pantalla se apague sola mientras se está
+  // reproduciendo. Sin esto, el sistema bloquea la pantalla tras un rato de
+  // inactividad táctil (aunque el audio siga sonando), y ESO es lo que
+  // dispara el modo de reproducción en segundo plano de más abajo. Ese modo,
+  // por más optimizado que esté (ver comentario en BG_LOOP_TARGET_SECONDS),
+  // todavía tiene una micro-costura cada vez que el <audio loop> nativo
+  // reinicia el WAV, porque ese loop no es 100% gapless en todos los
+  // navegadores/celulares. Manteniendo la pantalla despierta, la app se
+  // queda en el scheduler normal (sample-accurate) durante toda la práctica
+  // en primer plano, que es justo el escenario donde el desfase periódico
+  // se nota más. Solo entra al modo de fondo si el usuario bloquea la
+  // pantalla manualmente o cambia de app a propósito.
+  async function requestWakeLock() {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } catch (e) {
+      wakeLock = null;
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+  }
+
   document.addEventListener('visibilitychange', () => {
     if (!isPlaying) return;
     if (document.visibilityState === 'hidden') {
@@ -2858,6 +3027,7 @@
       }
     } else {
       bgLoopEl.pause();
+      if (isPlaying) requestWakeLock();
       if (isPlaying && audioCtx) {
         currentStepIndex = 0;
         noteQueue = [];
@@ -3110,6 +3280,7 @@
       transportBtn.disabled = false;
     }
     isPlaying = true;
+    requestWakeLock();
     transportBtn.textContent = (I18N[settingsState.lang] || I18N.es).stop_btn;
     transportBtn.classList.add('playing');
     transportBtn.setAttribute('aria-pressed', 'true');
@@ -3143,6 +3314,7 @@
 
   function stop() {
     isPlaying = false;
+    releaseWakeLock();
     clearTimeout(timerID);
     clearTimeout(meterTimerID);
     noteQueue = [];
@@ -3494,7 +3666,7 @@
       view_label: 'Vista', res_negras: 'Negras', res_corcheas: 'Corcheas', res_semicorcheas: 'Semicorcheas',
       accents_label: 'Acentos', accents_hint: 'Tocá un pulso para ciclar: mudo · normal · subacento · acento',
       accents_hidden_hint: 'Los bloques de ritmo están apagados en Ajustes (el acento sigue sonando igual, solo no se ve).',
-      play_btn: '▶  Reproducir', stop_btn: '■  Detener',
+      play_btn: '▶  Reproducir', stop_btn: '■  Detener', paypal_btn: 'Apoya este proyecto en PayPal',
       tuner_idle: 'Tocá "Escuchar" y sonale a un tambor cerca del micrófono', tuner_start: '🎙  Escuchar', tuner_presets_title: 'Referencias rápidas',
       settings_visualblock: 'Visual Block', settings_bloques: 'Bloques de ritmo', settings_pendulo: 'Bloque de conteo', settings_contador: 'Contador de compases',
       settings_resaltar: 'Resaltar compases', settings_acento: 'Acento', settings_subacento: 'Subacento', settings_normal: 'Normal',
@@ -3512,7 +3684,7 @@
       view_label: 'View', res_negras: 'Quarters', res_corcheas: 'Eighths', res_semicorcheas: 'Sixteenths',
       accents_label: 'Accents', accents_hint: 'Tap a beat to cycle: mute · normal · sub-accent · accent',
       accents_hidden_hint: 'Rhythm blocks are turned off in Settings (the accent still sounds the same, it just isn’t shown).',
-      play_btn: '▶  Play', stop_btn: '■  Stop',
+      play_btn: '▶  Play', stop_btn: '■  Stop', paypal_btn: 'Support this project on PayPal',
       tuner_idle: 'Tap "Listen" and play near the microphone', tuner_start: '🎙  Listen', tuner_presets_title: 'Quick references',
       settings_visualblock: 'Visual Block', settings_bloques: 'Rhythm blocks', settings_pendulo: 'Count block', settings_contador: 'Bar counter',
       settings_resaltar: 'Highlight beats', settings_acento: 'Accent', settings_subacento: 'Sub-accent', settings_normal: 'Normal',
@@ -3530,7 +3702,7 @@
       view_label: 'Ansicht', res_negras: 'Viertel', res_corcheas: 'Achtel', res_semicorcheas: 'Sechzehntel',
       accents_label: 'Akzente', accents_hint: 'Tippe auf einen Schlag zum Wechseln: stumm · normal · Nebenakzent · Akzent',
       accents_hidden_hint: 'Die Rhythmusblöcke sind in den Einstellungen deaktiviert (der Akzent klingt trotzdem, er wird nur nicht angezeigt).',
-      play_btn: '▶  Abspielen', stop_btn: '■  Stopp',
+      play_btn: '▶  Abspielen', stop_btn: '■  Stopp', paypal_btn: 'Unterstütze dieses Projekt auf PayPal',
       tuner_idle: 'Tippe auf "Hören" und spiele nah am Mikrofon', tuner_start: '🎙  Hören', tuner_presets_title: 'Schnellreferenzen',
       settings_visualblock: 'Visual Block', settings_bloques: 'Rhythmusblöcke', settings_pendulo: 'Zählblock', settings_contador: 'Taktzähler',
       settings_resaltar: 'Takte hervorheben', settings_acento: 'Akzent', settings_subacento: 'Nebenakzent', settings_normal: 'Normal',
@@ -3548,7 +3720,7 @@
       view_label: 'Visualização', res_negras: 'Semínimas', res_corcheas: 'Colcheias', res_semicorcheas: 'Semicolcheias',
       accents_label: 'Acentos', accents_hint: 'Toque em um pulso para alternar: mudo · normal · subacento · acento',
       accents_hidden_hint: 'Os blocos de ritmo estão desativados nos Ajustes (o acento continua soando, só não aparece).',
-      play_btn: '▶  Reproduzir', stop_btn: '■  Parar',
+      play_btn: '▶  Reproduzir', stop_btn: '■  Parar', paypal_btn: 'Apoie este projeto no PayPal',
       tuner_idle: 'Toque em "Ouvir" e toque perto do microfone', tuner_start: '🎙  Ouvir', tuner_presets_title: 'Referências rápidas',
       settings_visualblock: 'Visual Block', settings_bloques: 'Blocos de ritmo', settings_pendulo: 'Bloco de contagem', settings_contador: 'Contador de compassos',
       settings_resaltar: 'Destacar compassos', settings_acento: 'Acento', settings_subacento: 'Subacento', settings_normal: 'Normal',
@@ -3566,7 +3738,7 @@
       view_label: 'Affichage', res_negras: 'Noires', res_corcheas: 'Croches', res_semicorcheas: 'Doubles croches',
       accents_label: 'Accents', accents_hint: 'Touchez un temps pour changer : muet · normal · sous-accent · accent',
       accents_hidden_hint: 'Les blocs rythmiques sont désactivés dans les réglages (l’accent continue de sonner, il n’est juste plus affiché).',
-      play_btn: '▶  Lecture', stop_btn: '■  Arrêt',
+      play_btn: '▶  Lecture', stop_btn: '■  Arrêt', paypal_btn: 'Soutenez ce projet sur PayPal',
       tuner_idle: 'Appuyez sur "Écouter" et jouez près du micro', tuner_start: '🎙  Écouter', tuner_presets_title: 'Références rapides',
       settings_visualblock: 'Visual Block', settings_bloques: 'Blocs rythmiques', settings_pendulo: 'Bloc de comptage', settings_contador: 'Compteur de mesures',
       settings_resaltar: 'Mettre en valeur les temps', settings_acento: 'Accent', settings_subacento: 'Sous-accent', settings_normal: 'Normal',
@@ -3584,7 +3756,7 @@
       view_label: 'العرض', res_negras: 'أرباع', res_corcheas: 'أثمان', res_semicorcheas: 'أسداس عشر',
       accents_label: 'اللكمات', accents_hint: 'اضغط على النبضة للتبديل: صامت · عادي · لكمة فرعية · لكمة',
       accents_hidden_hint: 'كتل الإيقاع معطّلة في الإعدادات (اللكمة لا تزال تُسمع، فقط لا تظهر).',
-      play_btn: '▶  تشغيل', stop_btn: '■  إيقاف',
+      play_btn: '▶  تشغيل', stop_btn: '■  إيقاف', paypal_btn: 'ادعم هذا المشروع عبر PayPal',
       tuner_idle: 'اضغط على "استماع" واعزف بالقرب من الميكروفون', tuner_start: '🎙  استماع', tuner_presets_title: 'مراجع سريعة',
       settings_visualblock: 'الكتلة المرئية', settings_bloques: 'كتل الإيقاع', settings_pendulo: 'كتلة العد', settings_contador: 'عداد القياسات',
       settings_resaltar: 'إبراز الأزمنة', settings_acento: 'لكمة', settings_subacento: 'لكمة فرعية', settings_normal: 'عادي',
@@ -3602,7 +3774,7 @@
       view_label: '视图', res_negras: '四分音符', res_corcheas: '八分音符', res_semicorcheas: '十六分音符',
       accents_label: '重音', accents_hint: '点击一拍循环切换：静音 · 正常 · 次重音 · 重音',
       accents_hidden_hint: '节奏方块已在设置中关闭（重音仍会发声，只是不显示）。',
-      play_btn: '▶  播放', stop_btn: '■  停止',
+      play_btn: '▶  播放', stop_btn: '■  停止', paypal_btn: '通过 PayPal 支持本项目',
       tuner_idle: '点击"聆听"，靠近麦克风演奏', tuner_start: '🎙  聆听', tuner_presets_title: '快速参考',
       settings_visualblock: '视觉方块', settings_bloques: '节奏方块', settings_pendulo: '计数方块', settings_contador: '小节计数器',
       settings_resaltar: '高亮拍子', settings_acento: '重音', settings_subacento: '次重音', settings_normal: '正常',
@@ -3620,7 +3792,7 @@
       view_label: '表示', res_negras: '4分音符', res_corcheas: '8分音符', res_semicorcheas: '16分音符',
       accents_label: 'アクセント', accents_hint: '拍をタップして切り替え：ミュート · 通常 · サブアクセント · アクセント',
       accents_hidden_hint: 'リズムブロックは設定でオフになっています（アクセントの音は鳴りますが表示されません）。',
-      play_btn: '▶  再生', stop_btn: '■  停止',
+      play_btn: '▶  再生', stop_btn: '■  停止', paypal_btn: 'PayPalでこのプロジェクトを支援',
       tuner_idle: '「聴く」をタップしてマイクの近くで演奏してください', tuner_start: '🎙  聴く', tuner_presets_title: 'クイックリファレンス',
       settings_visualblock: 'ビジュアルブロック', settings_bloques: 'リズムブロック', settings_pendulo: 'カウントブロック', settings_contador: '小節カウンター',
       settings_resaltar: '拍を強調表示', settings_acento: 'アクセント', settings_subacento: 'サブアクセント', settings_normal: '通常',
