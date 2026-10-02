@@ -652,6 +652,16 @@
     transition: opacity 0.25s, transform 0.25s; z-index: 9999; text-align: center;
   }
   .share-toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .active-preset-line { margin: -6px 0 12px; font-size: 12.5px; color: var(--parchment-dim); text-align: center; }
+  .active-preset-line strong { color: var(--parchment); }
+  .dirty-dot { color: var(--ember); font-weight: 600; }
+  .playlist-item.is-active { outline: 2px solid var(--brass); outline-offset: -2px; }
+  .active-preset-box { border: 1px dashed var(--ember); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+  .active-preset-msg { margin: 0 0 10px; font-size: 13px; color: var(--parchment); }
+  .active-preset-btns { display: flex; flex-direction: column; gap: 8px; }
+  .active-preset-btn { margin: 0 !important; font-size: 14px; padding: 12px; }
+  .active-preset-btn2 { width: 100%; padding: 10px; }
 </style>
 </head>
 <body>
@@ -707,6 +717,7 @@
         <button class="timer-cancel-btn" id="timerCancelBtn" type="button" aria-label="Cancelar temporizador">✕</button>
       </div>
     </div>
+    <p class="active-preset-line" id="activePresetLine" style="display:none;"></p>
 
     <div class="pendulo-wrap" id="penduloWrap" style="display:none;">
       <p class="pendulo-caption"><span class="pendulo-caption-dot"></span><span data-i18n="pendulo_caption">Bloque de conteo activo</span></p>
@@ -1753,6 +1764,7 @@
       });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch (e) {}
+    if (typeof updateActivePresetLine === 'function') { try { updateActivePresetLine(); } catch (e) {} }
     if (typeof markBgLoopDirty === 'function') markBgLoopDirty();
   }
 
@@ -3462,6 +3474,11 @@
     return {
       mode: selectedKey, bpm, compas: `${ex.compasPulso}/${ex.compasNota}`,
       clave: claveOrientation, res: gridResolution,
+      claveData: ex.claveEnabled ? {
+        pattern: clave[claveOrientation].pattern.slice(),
+        muted: !!clave[claveOrientation].muted,
+        sound: claveSound.sound, gain: claveSound.gain, pan: claveSound.pan
+      } : undefined,
       lanes: ex.lanes.map((lane) => (lane.reference ? null : {
         hits: Array.isArray(lane.hits) ? lane.hits.slice() : [],
         muted: !!lane.muted, sound: lane.sound,
@@ -3482,11 +3499,22 @@
       return;
     }
     if (playlistEmptyHintEl) playlistEmptyHintEl.style.display = 'none';
-    playlistListEl.innerHTML = playlists.map((p) => `
-      <div class="playlist-item" data-id="${p.id}">
+    const active = getActivePreset();
+    let head = '';
+    if (active && presetHasChanges(active)) {
+      head = `<div class="active-preset-box">
+        <p class="active-preset-msg">Hiciste cambios en <strong>${escapeHtml(active.name)}</strong> que no están guardados.</p>
+        <div class="active-preset-btns">
+          <button type="button" class="transport active-preset-btn" data-overwrite="${active.id}">💾 Guardar cambios en «${escapeHtml(active.name)}»</button>
+          <button type="button" class="clave-btn active-preset-btn2" data-revert="${active.id}">↺ Volver al original</button>
+        </div>
+      </div>`;
+    }
+    playlistListEl.innerHTML = head + playlists.map((p) => `
+      <div class="playlist-item${active && active.id === p.id ? ' is-active' : ''}" data-id="${p.id}">
         <div class="playlist-item-info">
           <span class="playlist-item-name">${escapeHtml(p.name)}</span>
-          <span class="playlist-item-meta">${p.bpm} bpm · ${escapeHtml(p.compas)} · ${modeLabel(p.mode)}</span>
+          <span class="playlist-item-meta">${p.bpm} bpm · ${escapeHtml(p.compas)} · ${modeLabel(p.mode)}${isFullPreset(p) ? '' : ' · <em>solo tempo y compás</em>'}</span>
         </div>
         <div class="playlist-item-actions">
           <button class="playlist-item-share" type="button" data-share="${p.id}" aria-label="Compartir">${shareIconSvg}</button>
@@ -3494,6 +3522,45 @@
         </div>
       </div>
     `).join('');
+  }
+
+  // --- Ritmo activo: el último que cargaste o guardaste de la playlist. Los
+  // cambios que hagas después NO tocan el ritmo guardado: solo se guardan si
+  // tocás "Guardar cambios". Al volver a tocarlo en la playlist, vuelve a como
+  // estaba guardado. ---
+  let activePresetId = null;
+  try { const v = parseInt(localStorage.getItem('independenciaActivePreset') || '', 10); if (!isNaN(v)) activePresetId = v; } catch (e) {}
+  function setActivePreset(id) {
+    activePresetId = id;
+    try {
+      if (id == null) localStorage.removeItem('independenciaActivePreset');
+      else localStorage.setItem('independenciaActivePreset', String(id));
+    } catch (e) {}
+  }
+  function getActivePreset() {
+    return activePresetId == null ? null : (playlists.find((pl) => pl.id === activePresetId) || null);
+  }
+  const DIRTY_IGNORE = ['id', 'name', 'res', 'mres'];
+  function presetHasChanges(p) {
+    if (!p) return false;
+    const snap = currentPresetSnapshot();
+    if (snap.mode !== p.mode) return true;
+    return Object.keys(p).some((k) => {
+      if (DIRTY_IGNORE.includes(k)) return false;
+      return JSON.stringify(p[k]) !== JSON.stringify(snap[k]);
+    });
+  }
+  function isFullPreset(p) {
+    return p.mode === 'metronomo' ? Array.isArray(p.accents) : Array.isArray(p.lanes);
+  }
+  function updateActivePresetLine() {
+    const el = document.getElementById('activePresetLine');
+    if (!el) return;
+    const p = getActivePreset();
+    if (!p || selectedKey === 'ajustes') { el.style.display = 'none'; return; }
+    const dirty = presetHasChanges(p);
+    el.style.display = 'block';
+    el.innerHTML = `Ritmo: <strong>${escapeHtml(p.name)}</strong>` + (dirty ? ' · <span class="dirty-dot">cambios sin guardar</span>' : '');
   }
 
   function loadPreset(p) {
@@ -3515,6 +3582,14 @@
     } else if (exercises[p.mode]) {
       const ex = exercises[p.mode];
       if (p.clave === '3-2' || p.clave === '2-3') claveOrientation = p.clave;
+      if (p.claveData && typeof p.claveData === 'object') {
+        const cd = JSON.parse(JSON.stringify(p.claveData));
+        if (Array.isArray(cd.pattern)) clave[claveOrientation].pattern = cd.pattern.filter((n) => typeof n === 'number');
+        if (typeof cd.muted === 'boolean') clave[claveOrientation].muted = cd.muted;
+        if (cd.sound && findPreset(cd.sound)) claveSound.sound = cd.sound;
+        if (typeof cd.gain === 'number') claveSound.gain = cd.gain;
+        if (cd.pan !== undefined) claveSound.pan = cd.pan;
+      }
       if ([4, 8, 16].includes(p.res)) gridResolution = p.res;
       if (Array.isArray(p.lanes)) {
         const pattern = ensurePatternForMeter(ex, Math.max(1, Math.min(16, pulso)), nota);
@@ -3532,7 +3607,9 @@
       switchExerciseMeter(ex, pulso, nota);
     }
     if (typeof p.bpm === 'number') setBpm(p.bpm);
+    if (p.id != null) setActivePreset(p.id);
     setActiveTab(p.mode);
+    updateActivePresetLine();
   }
 
   function openPlaylistSheet() {
@@ -3562,9 +3639,12 @@
       name = `${modeLabel(snap.mode)} · ${snap.bpm} bpm`;
     }
     const snap = currentPresetSnapshot();
-    playlists.push({ id: Date.now(), name, ...snap });
+    const newId = Date.now();
+    playlists.push({ id: newId, name, ...snap });
+    setActivePreset(newId);
     savePlaylists();
     renderPlaylist();
+    updateActivePresetLine();
     playlistNameInputEl.value = '';
     if (playlistNameRowEl) playlistNameRowEl.style.display = 'none';
   }
@@ -3683,7 +3763,7 @@
       bpm: Math.max(30, Math.min(300, parseInt(data.bpm, 10) || 90)),
       compas: /^\d{1,2}\/\d{1,2}$/.test(String(data.compas)) ? String(data.compas) : '4/4'
     };
-    ['accents', 'poly', 'polyB', 'eqNote', 'mres', 'clave', 'res', 'lanes'].forEach((k) => {
+    ['accents', 'poly', 'polyB', 'eqNote', 'mres', 'clave', 'res', 'lanes', 'claveData'].forEach((k) => {
       if (data[k] !== undefined) preset[k] = data[k];
     });
     playlists.push(preset);
@@ -3694,6 +3774,27 @@
 
   if (playlistListEl) {
     playlistListEl.addEventListener('click', (e) => {
+      const owBtn = e.target.closest('[data-overwrite]');
+      if (owBtn) {
+        e.stopPropagation();
+        const id = parseInt(owBtn.dataset.overwrite, 10);
+        const idx = playlists.findIndex((pl) => pl.id === id);
+        if (idx !== -1) {
+          playlists[idx] = { id, name: playlists[idx].name, ...JSON.parse(JSON.stringify(currentPresetSnapshot())) };
+          savePlaylists();
+          renderPlaylist();
+          updateActivePresetLine();
+          showShareToast(`Cambios guardados en «${playlists[idx].name}»`);
+        }
+        return;
+      }
+      const rvBtn = e.target.closest('[data-revert]');
+      if (rvBtn) {
+        e.stopPropagation();
+        const p = playlists.find((pl) => pl.id === parseInt(rvBtn.dataset.revert, 10));
+        if (p) { loadPreset(p); renderPlaylist(); }
+        return;
+      }
       const shareBtn = e.target.closest('[data-share]');
       if (shareBtn) {
         e.stopPropagation();
@@ -3707,7 +3808,9 @@
         e.stopPropagation();
         const id = parseInt(delBtn.dataset.del, 10);
         playlists = playlists.filter((p) => p.id !== id);
+        if (activePresetId === id) setActivePreset(null);
         savePlaylists();
+        updateActivePresetLine();
         renderPlaylist();
         return;
       }
