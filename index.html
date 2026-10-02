@@ -3475,8 +3475,10 @@
       mode: selectedKey, bpm, compas: `${ex.compasPulso}/${ex.compasNota}`,
       clave: claveOrientation, res: gridResolution,
       claveData: ex.claveEnabled ? {
-        pattern: clave[claveOrientation].pattern.slice(),
-        muted: !!clave[claveOrientation].muted,
+        both: {
+          '3-2': { pattern: clave['3-2'].pattern.slice(), muted: !!clave['3-2'].muted },
+          '2-3': { pattern: clave['2-3'].pattern.slice(), muted: !!clave['2-3'].muted }
+        },
         sound: claveSound.sound, gain: claveSound.gain, pan: claveSound.pan
       } : undefined,
       lanes: ex.lanes.map((lane) => (lane.reference ? null : {
@@ -3584,8 +3586,19 @@
       if (p.clave === '3-2' || p.clave === '2-3') claveOrientation = p.clave;
       if (p.claveData && typeof p.claveData === 'object') {
         const cd = JSON.parse(JSON.stringify(p.claveData));
-        if (Array.isArray(cd.pattern)) clave[claveOrientation].pattern = cd.pattern.filter((n) => typeof n === 'number');
-        if (typeof cd.muted === 'boolean') clave[claveOrientation].muted = cd.muted;
+        if (cd.both && typeof cd.both === 'object') {
+          // Se guardan y restauran las dos claves (3-2 y 2-3), no solo la activa.
+          ['3-2', '2-3'].forEach((k) => {
+            const c = cd.both[k];
+            if (!c) return;
+            if (Array.isArray(c.pattern)) clave[k].pattern = c.pattern.filter((n) => typeof n === 'number');
+            if (typeof c.muted === 'boolean') clave[k].muted = c.muted;
+          });
+        } else {
+          // Formato anterior: solo la clave que estaba activa al guardar.
+          if (Array.isArray(cd.pattern)) clave[claveOrientation].pattern = cd.pattern.filter((n) => typeof n === 'number');
+          if (typeof cd.muted === 'boolean') clave[claveOrientation].muted = cd.muted;
+        }
         if (cd.sound && findPreset(cd.sound)) claveSound.sound = cd.sound;
         if (typeof cd.gain === 'number') claveSound.gain = cd.gain;
         if (cd.pan !== undefined) claveSound.pan = cd.pan;
