@@ -662,6 +662,16 @@
   .active-preset-btns { display: flex; flex-direction: column; gap: 8px; }
   .active-preset-btn { margin: 0 !important; font-size: 14px; padding: 12px; }
   .active-preset-btn2 { width: 100%; padding: 10px; }
+
+  .hide-gen-extras .gen-extra { display: none !important; }
+  #tempoPanel.tempo-merged { background: transparent; border: none; box-shadow: none; padding: 14px 0 4px; margin: 14px 0 0; border-top: 1px solid var(--surface-2); border-radius: 0; }
+  .timer-badge.paused { opacity: 0.75; }
+  .lane-order-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--surface-2); }
+  .lane-order-row:first-child { border-top: none; }
+  .lane-order-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+  .lane-order-name { flex: 1; font-size: 13.5px; color: var(--parchment); min-width: 0; }
+  .lane-order-btn { width: 38px; height: 38px; font-size: 17px; }
+  .lane-order-btn:disabled { opacity: 0.3; cursor: default; }
 </style>
 </head>
 <body>
@@ -693,7 +703,7 @@
 
     <div id="transportAnchor"></div>
     <div id="transportBlock">
-    <div class="panel">
+    <div class="panel" id="tempoPanel">
       <div class="tempo-row">
         <span class="tempo-label">Tempo</span>
         <span class="tempo-value"><span id="bpmDisplay">76</span><span class="unit">bpm</span></span>
@@ -778,6 +788,7 @@
       </div>
 
       <button class="transport timer-start-btn" id="timerStartBtn" type="button">Iniciar</button>
+      <button class="clave-btn" id="timerSheetCancel" type="button" style="display:none; width:100%; padding:10px; margin:-8px 0 16px;">✕ Cancelar el temporizador en curso</button>
 
       <div class="timer-options">
         <label class="timer-option-row">
@@ -1035,6 +1046,23 @@
           <label class="settings-row"><span data-i18n="settings_haptica">Háptica</span><span class="switch"><input type="checkbox" id="optHaptica"><span class="switch-slider"></span></span></label>
           <label class="settings-row"><span data-i18n="settings_vibracion_acento">Vibración en el acento</span><span class="switch"><input type="checkbox" id="optVibracionAcento"><span class="switch-slider"></span></span></label>
           <p class="hint" style="text-align:left; margin-top:6px;" data-i18n="settings_haptica_hint">La vibración depende del navegador — funciona en Chrome/Android, iOS Safari no la soporta.</p>
+        </div>
+
+        <div class="settings-section">
+          <p class="settings-section-title">Pantalla principal</p>
+          <label class="settings-row"><span>Mostrar el tiempo restante del temporizador</span><span class="switch"><input type="checkbox" id="optTimerBadge"><span class="switch-slider"></span></span></label>
+          <label class="settings-row"><span>Mostrar canal de salida, nivel y generador</span><span class="switch"><input type="checkbox" id="optGenExtras"><span class="switch-slider"></span></span></label>
+        </div>
+
+        <div class="settings-section">
+          <p class="settings-section-title">Orden de las voces</p>
+          <div class="lang-row" id="laneOrderModeBtns" style="flex-wrap:wrap; margin-bottom:10px;">
+            <button class="lang-btn" type="button" data-order-mode="hibrido">Híbrido</button>
+            <button class="lang-btn" type="button" data-order-mode="cajon">Cajón</button>
+            <button class="lang-btn" type="button" data-order-mode="congas">Congas</button>
+          </div>
+          <div id="laneOrderList"></div>
+          <button class="clave-btn" id="laneOrderReset" type="button" style="margin-top:8px;">Restablecer orden</button>
         </div>
 
         <div class="settings-section">
@@ -1421,7 +1449,10 @@
     lang: 'es',
     tunerA4: 440,
     timerChime: true,
-    timerChimeVol: 0.5
+    timerChimeVol: 0.5,
+    showTimerBadge: true,
+    showGenExtras: true,
+    laneOrder: {}
   };
   let barCount = 1;
   let penduloSide = false;
@@ -1592,43 +1623,40 @@
     });
     html += '</div>';
 
-    // La clave va primero, arriba de todas las voces.
+    // Filas en el orden elegido en Ajustes (por defecto: clave primero).
+    const rowHtml = {};
     if (ex.claveEnabled && is4x4) {
       const cl = clave[claveOrientation];
-      const rowMuted = cl.muted ? ' muted' : '';
-      html += `<div class="grid-row${rowMuted}" style="${rowStyle}">`;
-      html += `<div class="lane-label mutable" data-mute-lane="clave">Clave</div>`;
+      let r = `<div class="grid-row${cl.muted ? ' muted' : ''}" style="${rowStyle}">`;
+      r += `<div class="lane-label mutable" data-mute-lane="clave">Clave</div>`;
       steps.forEach((i) => {
-        if (i === barGapAt) html += '<div class="bar-gap"></div>';
-        const isHit = cl.pattern.includes(i);
-        const markClass = isHit ? 'mark hit lane-clave' : 'mark';
-        html += `<div class="step editable" data-step="${i}" data-lane="clave"><div class="${markClass}"></div></div>`;
+        if (i === barGapAt) r += '<div class="bar-gap"></div>';
+        const markClass = cl.pattern.includes(i) ? 'mark hit lane-clave' : 'mark';
+        r += `<div class="step editable" data-step="${i}" data-lane="clave"><div class="${markClass}"></div></div>`;
       });
-      html += '</div>';
+      rowHtml.clave = r + '</div>';
     }
-
     ex.lanes.forEach((lane, laneIdx) => {
-      const rowMuted = lane.muted ? ' muted' : '';
-      html += `<div class="grid-row${rowMuted}" style="${rowStyle}">`;
+      let r = `<div class="grid-row${lane.muted ? ' muted' : ''}" style="${rowStyle}">`;
       const labelClass = lane.reference ? 'lane-label' : 'lane-label mutable';
       const labelDataAttr = lane.reference ? '' : ` data-mute-lane="${laneIdx}"`;
-      html += `<div class="${labelClass}"${labelDataAttr}>${lane.label}</div>`;
+      r += `<div class="${labelClass}"${labelDataAttr}>${lane.label}</div>`;
       const hits = effectiveHits(lane.hits, ex);
       steps.forEach((i) => {
-        if (i === barGapAt) html += '<div class="bar-gap"></div>';
-        const isHit = hits.includes(i);
+        if (i === barGapAt) r += '<div class="bar-gap"></div>';
         let markClass = 'mark';
-        if (isHit) {
+        if (hits.includes(i)) {
           markClass = lane.reference ? 'mark reference' : `mark hit lane-${laneIdx}`;
           const baseI = toBaseStep(i, ex);
           if (!lane.reference && lane.stepSounds && lane.stepSounds[baseI] != null) markClass += ' alt';
         }
         const editable = !lane.reference;
         const dataLane = editable ? ` data-lane="${laneIdx}"` : '';
-        html += `<div class="step${editable ? ' editable' : ''}" data-step="${i}"${dataLane}><div class="${markClass}"></div></div>`;
+        r += `<div class="step${editable ? ' editable' : ''}" data-step="${i}"${dataLane}><div class="${markClass}"></div></div>`;
       });
-      html += '</div>';
+      rowHtml[String(laneIdx)] = r + '</div>';
     });
+    laneOrderFor(key).forEach((k) => { if (rowHtml[k]) html += rowHtml[k]; });
 
     gridEl.innerHTML = html;
     if (isPlaying && lastHighlightedStep !== null) highlightStep(lastHighlightedStep);
@@ -1688,11 +1716,27 @@
     soundPanelEl.classList.add('visible');
   }
 
+  // Orden de las voces (filas de círculos y panel de sonidos), configurable
+  // en Ajustes. Claves: 'clave' o el índice de la voz como texto.
+  function defaultLaneOrder(key) {
+    const ex = exercises[key];
+    if (!ex) return [];
+    return (ex.claveEnabled ? ['clave'] : []).concat(ex.lanes.map((l, i) => String(i)));
+  }
+  function laneOrderFor(key) {
+    const def = defaultLaneOrder(key);
+    const saved = (settingsState.laneOrder && Array.isArray(settingsState.laneOrder[key])) ? settingsState.laneOrder[key] : [];
+    const out = saved.filter((k) => def.includes(k));
+    def.forEach((k) => { if (!out.includes(k)) out.push(k); });
+    return out;
+  }
+
   function renderSoundPanel(key) {
     const ex = exercises[key];
     let html = '';
-    if (ex.claveEnabled) {
-      html += `<div class="sound-row">
+    laneOrderFor(key).forEach((k) => {
+      if (k === 'clave') {
+        html += `<div class="sound-row">
         <div class="sound-row-top">
           <span class="sound-row-label">Clave</span>
           <select class="voice-select" data-sound-lane="clave">${soundOptionsHtml(claveSound.sound)}</select>
@@ -1700,9 +1744,11 @@
         ${gainRowHtml('clave', 'clave', claveSound.gain)}
         ${panRowHtml('clave', claveSound.pan)}
       </div>`;
-    }
-    ex.lanes.forEach((lane, laneIdx) => {
-      if (lane.reference) return;
+        return;
+      }
+      const laneIdx = parseInt(k, 10);
+      const lane = ex.lanes[laneIdx];
+      if (!lane || lane.reference) return;
       html += `<div class="sound-row">
         <div class="sound-row-top">
           <span class="sound-row-label">${lane.label}</span>
@@ -1884,10 +1930,20 @@
     let target = null;
     if (key === 'metronomo') target = meterPanelEl.querySelector(':scope > .panel');
     else if (key !== 'ajustes') target = document.getElementById('exCompasPanel');
-    if (target) target.insertAdjacentElement('afterend', block);
-    else {
+    const tempo = document.getElementById('tempoPanel');
+    if (target) {
+      target.insertAdjacentElement('afterend', block);
+      // El tempo va dentro del mismo recuadro de Pulso / Compás / Nota,
+      // antes de canal de salida / nivel / generador.
+      if (tempo) {
+        const firstExtra = target.querySelector('.gen-extra');
+        if (firstExtra) target.insertBefore(tempo, firstExtra); else target.appendChild(tempo);
+        tempo.classList.add('tempo-merged');
+      }
+    } else {
       const anchor = document.getElementById('transportAnchor');
       if (anchor) anchor.insertAdjacentElement('afterend', block);
+      if (tempo) { block.insertBefore(tempo, block.firstChild); tempo.classList.remove('tempo-merged'); }
     }
   }
 
@@ -2153,12 +2209,38 @@
   }
 
   function updateTimerBadge() {
-    if (timerEndAt == null) { timerBadge.style.display = 'none'; return; }
+    const sheetCancel = document.getElementById('timerSheetCancel');
+    const active = timerEndAt != null || timerPausedMs != null;
+    if (sheetCancel) sheetCancel.style.display = active ? 'block' : 'none';
+    if (!active || settingsState.showTimerBadge === false) { timerBadge.style.display = 'none'; return; }
     timerBadge.style.display = 'flex';
-    timerBadgeText.textContent = formatCountdown(timerEndAt - Date.now());
+    timerBadge.classList.toggle('paused', timerPausedMs != null);
+    timerBadgeText.textContent = timerPausedMs != null
+      ? `⏸ ${formatCountdown(timerPausedMs)}`
+      : formatCountdown(timerEndAt - Date.now());
+  }
+
+  let timerPausedMs = null; // tiempo restante mientras está en pausa
+
+  function pauseTimer() {
+    if (timerEndAt == null) return;
+    timerPausedMs = Math.max(0, timerEndAt - Date.now());
+    timerEndAt = null;
+    if (timerIntervalId) { clearInterval(timerIntervalId); timerIntervalId = null; }
+    updateTimerBadge();
+  }
+
+  function resumeTimer() {
+    if (timerPausedMs == null) return;
+    timerEndAt = Date.now() + timerPausedMs;
+    timerPausedMs = null;
+    if (timerIntervalId) clearInterval(timerIntervalId);
+    timerIntervalId = setInterval(checkTimerExpiry, 500);
+    updateTimerBadge();
   }
 
   function cancelTimer() {
+    timerPausedMs = null;
     timerEndAt = null;
     timerDurationMs = null;
     if (timerIntervalId) { clearInterval(timerIntervalId); timerIntervalId = null; }
@@ -2312,6 +2394,7 @@
   }
 
   function startTimer() {
+    timerPausedMs = null;
     timerDurationMs = (selectedTimerMinutes * 60 + selectedTimerSeconds) * 1000;
     timerEndAt = Date.now() + timerDurationMs;
     timerRepeatFlag = timerOptRepeat.checked;
@@ -2326,6 +2409,8 @@
 
   timerStartBtn.addEventListener('click', startTimer);
   timerCancelBtn.addEventListener('click', cancelTimer);
+  const timerSheetCancelEl = document.getElementById('timerSheetCancel');
+  if (timerSheetCancelEl) timerSheetCancelEl.addEventListener('click', () => { cancelTimer(); updateTimerBadge(); closeTimerSheet(); });
 
   // --- Modo Metrónomo: compás (pulso/nota), acentos por pulso y polirritmo con
   // rueda circular (2 anillos: pulso principal afuera, pulso secundario adentro). ---
@@ -2463,11 +2548,10 @@
     saveState();
   });
 
-  // Nota: el StereoPannerNode "de libro" usa -1 = izquierda, 1 = derecha, pero
-  // en pruebas reales quedaba al revés (elegir "Izquierda" apagaba el canal
-  // izquierdo), asi que el mapeo queda invertido para que coincida con lo que
-  // el usuario escucha de verdad.
-  function channelToPan(ch) { return ch === 'left' ? 1 : ch === 'right' ? -1 : 0; }
+  // StereoPannerNode: -1 = izquierda, 1 = derecha (verificado renderizando
+  // audio en el navegador: -1 sale solo por el canal izquierdo). Una versión
+  // anterior lo tenía invertido y "Izquierda" sonaba por la derecha.
+  function channelToPan(ch) { return ch === 'left' ? -1 : ch === 'right' ? 1 : 0; }
 
   function renderChannelBtns() {
     document.querySelectorAll('#exChannelBtns .clave-btn, #meterChannelBtns .clave-btn').forEach((b) => {
@@ -3437,7 +3521,17 @@
     if (penduloBlocksEl) [...penduloBlocksEl.children].forEach(el => el.classList.remove('on'));
   }
 
-  transportBtn.addEventListener('click', () => { isPlaying ? stop() : start(); });
+  // Detener / Reproducir con el botón también pausa / reanuda el temporizador,
+  // para que no siga corriendo solo mientras el metrónomo está parado.
+  transportBtn.addEventListener('click', () => {
+    if (isPlaying) {
+      stop();
+      if (typeof pauseTimer === 'function') pauseTimer();
+    } else {
+      start();
+      if (typeof resumeTimer === 'function') resumeTimer();
+    }
+  });
 
   // --- Playlist: guarda "presets" (modo + bpm + compás) con nombre, para
   // poder volver a cargarlos despues. Se persiste aparte del estado principal. ---
@@ -3988,6 +4082,43 @@
       name: 'Serio',
       vars: { ink: '#e6e8eb', bg: '#1b1e22', surface: '#24282e', 'surface-2': '#2f343b', parchment: '#e6e8eb', 'parchment-dim': '#8a939e', brass: '#6c7a89', ember: '#9aa5b1', verdigris: '#5c6773', rust: '#9aa5b1', focus: '#9aa5b1' },
       swatches: ['#1b1e22', '#6c7a89', '#9aa5b1']
+    },
+    // --- Sobrias / adultas ---
+    grafito: {
+      name: 'Grafito y oro',
+      vars: { ink: '#14161a', bg: '#121417', surface: '#1b1e23', 'surface-2': '#272b31', parchment: '#ece8df', 'parchment-dim': '#8f949b', brass: '#c9a96e', ember: '#b5523b', verdigris: '#7fa38c', rust: '#a8744f', focus: '#e3d3a8' },
+      swatches: ['#121417', '#c9a96e', '#b5523b']
+    },
+    vino: {
+      name: 'Vino tinto',
+      vars: { ink: '#1a0f11', bg: '#1a1012', surface: '#251719', 'surface-2': '#362224', parchment: '#f2e7de', 'parchment-dim': '#a8918a', brass: '#c49a5b', ember: '#a63446', verdigris: '#8a9a6e', rust: '#c2714f', focus: '#e0c9a6' },
+      swatches: ['#1a1012', '#a63446', '#c49a5b']
+    },
+    pizarra: {
+      name: 'Pizarra',
+      vars: { ink: '#f5f7f9', bg: '#eceff2', surface: '#f9fafb', 'surface-2': '#dbe1e7', parchment: '#1f2933', 'parchment-dim': '#5f6b78', brass: '#2f4a63', ember: '#a3503a', verdigris: '#5b7f6b', rust: '#8a6d4b', focus: '#7b8fa6' },
+      swatches: ['#eceff2', '#2f4a63', '#a3503a']
+    },
+    // --- Chill ---
+    lofi: {
+      name: 'Lo-fi',
+      vars: { ink: '#1e1b2e', bg: '#1e1b2e', surface: '#28243b', 'surface-2': '#353050', parchment: '#ece6f5', 'parchment-dim': '#9b93b6', brass: '#a493ff', ember: '#ff9fb2', verdigris: '#7fd1c7', rust: '#ffc48c', focus: '#f5e17a' },
+      swatches: ['#1e1b2e', '#a493ff', '#ff9fb2']
+    },
+    atardecer: {
+      name: 'Atardecer',
+      vars: { ink: '#fffaf6', bg: '#fdf0ea', surface: '#fffaf7', 'surface-2': '#f5dcd1', parchment: '#3d2c33', 'parchment-dim': '#957c83', brass: '#d06f62', ember: '#7f6bb8', verdigris: '#d99a5c', rust: '#b97a92', focus: '#e0b04f' },
+      swatches: ['#fdf0ea', '#d06f62', '#7f6bb8']
+    },
+    oceano: {
+      name: 'Océano',
+      vars: { ink: '#0f2027', bg: '#0f2027', surface: '#16303a', 'surface-2': '#1f404c', parchment: '#e3f2f1', 'parchment-dim': '#86aeb0', brass: '#5cc8b5', ember: '#f2a65a', verdigris: '#8fc9ea', rust: '#e98a8a', focus: '#f3dd7d' },
+      swatches: ['#0f2027', '#5cc8b5', '#f2a65a']
+    },
+    matcha: {
+      name: 'Matcha',
+      vars: { ink: '#fbfcf8', bg: '#eff3e9', surface: '#fbfcf8', 'surface-2': '#dce5d0', parchment: '#2b3326', 'parchment-dim': '#6d7b62', brass: '#5f8a4e', ember: '#c4775e', verdigris: '#8aa64b', rust: '#9b7650', focus: '#d1a94a' },
+      swatches: ['#eff3e9', '#5f8a4e', '#c4775e']
     }
   };
 
@@ -4240,7 +4371,79 @@
   bindSettingsCheckbox('optHaptica', 'haptica');
   bindSettingsCheckbox('optVibracionAcento', 'vibracionAcento');
 
+  // Marca las filas de canal / nivel / generador para poder ocultarlas.
+  (function markGenExtras() {
+    const mark = (el) => { if (el) el.classList.add('gen-extra'); };
+    ['exChannelBtns', 'meterChannelBtns', 'genDensityBtnsGrid', 'genDensityBtnsMeter'].forEach((id) => {
+      const el = document.getElementById(id); if (el) mark(el.closest('.channel-row'));
+    });
+    mark(document.getElementById('levelRow'));
+    ['generateRhythmBtn', 'generateMeterBtn'].forEach((id) => {
+      const el = document.getElementById(id); if (el) mark(el.parentElement);
+    });
+  })();
+  function applyGenExtras() {
+    document.body.classList.toggle('hide-gen-extras', settingsState.showGenExtras === false);
+  }
+  const optTimerBadgeEl = document.getElementById('optTimerBadge');
+  if (optTimerBadgeEl) optTimerBadgeEl.addEventListener('change', () => {
+    settingsState.showTimerBadge = optTimerBadgeEl.checked; saveState(); updateTimerBadge();
+  });
+  const optGenExtrasEl = document.getElementById('optGenExtras');
+  if (optGenExtrasEl) optGenExtrasEl.addEventListener('change', () => {
+    settingsState.showGenExtras = optGenExtrasEl.checked; saveState(); applyGenExtras();
+  });
+
+  // --- Orden de las voces ---
+  const LANE_NAMES = { MI: 'Mano izquierda', MD: 'Mano derecha', PI: 'Pie izquierdo', PD: 'Pie derecho', Izq: 'Mano izquierda', Der: 'Mano derecha', Grave: 'Golpe grave', Agudo: 'Golpe agudo' };
+  let laneOrderMode = 'hibrido';
+  const laneOrderListEl = document.getElementById('laneOrderList');
+  function renderLaneOrderEditor() {
+    if (!laneOrderListEl) return;
+    document.querySelectorAll('[data-order-mode]').forEach((b) => b.classList.toggle('active', b.dataset.orderMode === laneOrderMode));
+    const ex = exercises[laneOrderMode];
+    const order = laneOrderFor(laneOrderMode);
+    laneOrderListEl.innerHTML = order.map((k, pos) => {
+      const isClave = k === 'clave';
+      const lane = isClave ? null : ex.lanes[parseInt(k, 10)];
+      const short = isClave ? 'Clave' : lane.label;
+      const long = isClave ? 'Clave (fondo)' : (LANE_NAMES[lane.label] || '');
+      const dotClass = isClave ? 'lane-clave' : `lane-${k}`;
+      return `<div class="lane-order-row">
+        <span class="mark hit ${dotClass} lane-order-dot"></span>
+        <span class="lane-order-name"><strong>${short}</strong>${long ? ` · ${long}` : ''}</span>
+        <button class="tempo-step lane-order-btn" type="button" data-move="${pos}" data-dir="-1" aria-label="Subir ${short}" ${pos === 0 ? 'disabled' : ''}>↑</button>
+        <button class="tempo-step lane-order-btn" type="button" data-move="${pos}" data-dir="1" aria-label="Bajar ${short}" ${pos === order.length - 1 ? 'disabled' : ''}>↓</button>
+      </div>`;
+    }).join('');
+  }
+  document.querySelectorAll('[data-order-mode]').forEach((b) => b.addEventListener('click', () => {
+    laneOrderMode = b.dataset.orderMode; renderLaneOrderEditor();
+  }));
+  if (laneOrderListEl) laneOrderListEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-move]');
+    if (!btn || btn.disabled) return;
+    const order = laneOrderFor(laneOrderMode);
+    const pos = parseInt(btn.dataset.move, 10);
+    const to = pos + parseInt(btn.dataset.dir, 10);
+    if (to < 0 || to >= order.length) return;
+    [order[pos], order[to]] = [order[to], order[pos]];
+    if (!settingsState.laneOrder || typeof settingsState.laneOrder !== 'object') settingsState.laneOrder = {};
+    settingsState.laneOrder[laneOrderMode] = order;
+    saveState();
+    renderLaneOrderEditor();
+  });
+  const laneOrderResetEl = document.getElementById('laneOrderReset');
+  if (laneOrderResetEl) laneOrderResetEl.addEventListener('click', () => {
+    if (settingsState.laneOrder) delete settingsState.laneOrder[laneOrderMode];
+    saveState();
+    renderLaneOrderEditor();
+  });
+
   function renderAjustesPanel() {
+    if (optTimerBadgeEl) optTimerBadgeEl.checked = settingsState.showTimerBadge !== false;
+    if (optGenExtrasEl) optGenExtrasEl.checked = settingsState.showGenExtras !== false;
+    renderLaneOrderEditor();
     const ids = {
       optBloques: 'bloques', optPendulo: 'pendulo', optContador: 'contador',
       optResaltarAcento: 'resaltarAcento', optResaltarSubacento: 'resaltarSubacento', optResaltarNormal: 'resaltarNormal',
@@ -4264,6 +4467,7 @@
   loadState();
   loadPlaylists();
   applyTheme(settingsState.theme);
+  applyGenExtras();
   renderTunerPresets();
   renderTunerA4();
   bpmSlider.value = bpm;
